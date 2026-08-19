@@ -1,0 +1,11 @@
+schema_version: 1
+cases:
+  - id: factual-recall
+    task: Return the fixture fact exactly.
+    critical: true
+    assertions:
+      - id: expected-value
+        kind: output_contains
+        critical: true
+        config:
+          value: fixture-fact

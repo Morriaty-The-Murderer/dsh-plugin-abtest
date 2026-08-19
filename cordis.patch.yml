@@ -1,0 +1,3 @@
+- insert:
+    - id: plugin-experiment-controller
+      name: dsh-plugin-abtest/dsh-plugin

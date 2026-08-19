@@ -1,0 +1,15 @@
+{
+  "identityVersion": 1,
+  "displayName": "DSH Plugin A/B Test",
+  "shortName": "Plugin AB",
+  "repoSlug": "dsh-plugin-abtest",
+  "npmScope": null,
+  "npmName": "dsh-plugin-abtest",
+  "cliBin": "dsh-ab",
+  "description": "Paired experiments and promotion gates for DSH plugins.",
+  "legacyAliases": {
+    "npmPackages": [],
+    "cliBins": [],
+    "repoSlugs": []
+  }
+}
