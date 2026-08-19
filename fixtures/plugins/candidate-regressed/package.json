@@ -1,0 +1,11 @@
+{
+  "name": "fixture-plugin",
+  "version": "2.0.0-regressed",
+  "type": "module",
+  "main": "./index.js",
+  "fixtureBehavior": {
+    "output": "regressed",
+    "inputTokens": 60,
+    "outputTokens": 60
+  }
+}

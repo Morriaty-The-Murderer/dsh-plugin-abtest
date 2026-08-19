@@ -1,0 +1,11 @@
+{
+  "name": "fixture-plugin",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./index.js",
+  "fixtureBehavior": {
+    "output": "baseline",
+    "inputTokens": 50,
+    "outputTokens": 50
+  }
+}

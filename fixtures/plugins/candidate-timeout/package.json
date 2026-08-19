@@ -1,0 +1,10 @@
+{
+  "name": "fixture-plugin",
+  "version": "2.0.0-timeout",
+  "type": "module",
+  "main": "index.js",
+  "fixtureBehavior": {
+    "hangMs": 1000,
+    "output": "expected"
+  }
+}

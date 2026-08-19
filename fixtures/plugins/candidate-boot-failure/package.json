@@ -1,0 +1,10 @@
+{
+  "name": "fixture-plugin",
+  "version": "2.0.0-boot-failure",
+  "type": "module",
+  "main": "./index.js",
+  "fixtureBehavior": {
+    "output": "",
+    "bootFailure": true
+  }
+}

@@ -1,0 +1,79 @@
+# 实验清单 v1
+
+实验清单使用严格 YAML/JSON schema。顶层 `schema_version` 当前只能是 `1`；未知字段会直接失败，只有显式 `extensions` 保留区允许扩展数据。完整示例见 `experiment.example.yml`，稳定 schema 标识为 `urn:dsh:plugin-experiment:manifest:v1`。
+
+## Variant 来源
+
+`variants.control.source` 与 `variants.candidate.source` 支持：
+
+- `npm:<package>@<exact-version>`
+- `github:<owner>/<repo>#<40-character-commit-sha>`
+- `local:<relative-directory>`
+- `tarball:<relative-file.tgz>`
+
+npm 输入必须是精确版本；GitHub 输入必须直接固定到 40 位 commit SHA。MVP 不会把 branch 或 tag 静默解析成最终实验身份。所有 fixture、case 和 config 路径都相对于 manifest 所在目录解析，不允许绝对路径或 `..` 逃逸。
+
+## Runtime
+
+真实 DSH 执行只支持：
+
+```yaml
+runtime:
+  dsh_version: 0.1.0-rc.7
+```
+
+其他版本会在校验阶段失败，避免 manifest 声明的契约与实际 adapter 不一致。`runtime.model.provider: mock` 使用仓库内 scripted provider；其他 provider 调用固定的 DSH CLI，并要求调用方完成相应模型配置。
+
+## 并发与暴露证明
+
+`execution.concurrency` 限制同时运行的 pair 数量；单个 pair 内仍按 counterbalanced 顺序依次执行两臂。
+
+不配置 `exposure_detectors` 时，默认查找稳定的自定义 receipt：
+
+```text
+dsh.plugin-experiment/exposure
+```
+
+第三方插件不必实现该 receipt，可以改用 session 中已有的工具或事件：
+
+```yaml
+execution:
+  order: counterbalanced
+  concurrency: 2
+  timeout_ms: 600000
+  require_exposure: true
+  exposure_detectors:
+    - id: memory-tool-used
+      kind: tool_name
+      tool_name: memory_lookup
+    - id: retrieval-event
+      kind: session_event
+      event_type: memory/retrieved
+```
+
+支持的 detector 类型为：
+
+| `kind` | 必填字段 | 证据来源 |
+| --- | --- | --- |
+| `tool_name` | `tool_name` | DSH session tool call |
+| `session_event` | `event_type` | DSH session event |
+| `custom_receipt` | 可选 `plugin` | 稳定 receipt event |
+| `prompt_section` | `text` | 调用方提供的 system prompt |
+| `service_operation` | `operation` | 调用方提供的 service operation |
+| `otel_attribute` | `key`，可选 `value` | 调用方提供的 OTel attribute |
+
+前三类可由标准 CLI 的 append-only session 证据直接判断。后三类通过公开 core detector API 支持；若标准 CLI 没有相应可选证据，它们会保持未匹配。`require_exposure: true` 时，未证实暴露的 pair 不参与效果结论，并最终进入 `INCONCLUSIVE`。
+
+## 环境变量
+
+只有 `extensions.environment_allowlist` 中列出的变量名会传入实验子进程：
+
+```yaml
+extensions:
+  environment_allowlist:
+    - LANG
+    - TZ
+    - MODEL_API_KEY
+```
+
+fingerprint 和制品元数据只记录 allowlist 的规范化哈希，不保存原始环境变量值。子进程的 stdout、stderr 与 session log 会原样作为运行证据保存；插件和测试命令不得主动输出 secret。

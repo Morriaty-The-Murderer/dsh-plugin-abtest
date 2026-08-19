@@ -1,0 +1,10 @@
+node_modules/
+lib/
+coverage/
+.worktrees/
+.idea/
+.DS_Store
+*.tgz
+rename-report.json
+experiments/
+GOAL.md

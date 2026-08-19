@@ -1,0 +1,12 @@
+{
+  "name": "fixture-plugin",
+  "version": "2.0.0-unexposed",
+  "type": "module",
+  "main": "./index.js",
+  "fixtureBehavior": {
+    "output": "expected",
+    "unexposed": true,
+    "inputTokens": 52,
+    "outputTokens": 52
+  }
+}
