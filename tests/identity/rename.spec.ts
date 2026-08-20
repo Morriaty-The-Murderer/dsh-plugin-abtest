@@ -51,6 +51,10 @@ async function createProject(): Promise<string> {
     `export const PROJECT_IDENTITY = { displayName: '${oldIdentity.displayName}' }\n`,
   )
   await writeFile(join(root, 'README.md'), `# ${oldIdentity.displayName}\n\nRun \`${oldIdentity.cliBin} init\`.\n`)
+  await writeFile(
+    join(root, 'README.zh-CN.md'),
+    `# ${oldIdentity.displayName}\n\n运行 \`${oldIdentity.cliBin} init\`。\n`,
+  )
   await writeFile(join(root, 'LICENSE'), `Copyright ${oldIdentity.displayName} contributors\n`)
   await writeFile(
     join(root, 'docs', 'usage.md'),
@@ -70,6 +74,7 @@ async function snapshot(root: string): Promise<Record<string, string>> {
     'package.json',
     'src/identity/generated.ts',
     'README.md',
+    'README.zh-CN.md',
     'LICENSE',
     'docs/usage.md',
     '.github/workflows/ci.yml',
@@ -92,6 +97,7 @@ describe('项目重命名', () => {
       '.github/workflows/ci.yml',
       'LICENSE',
       'README.md',
+      'README.zh-CN.md',
       'docs/usage.md',
       'package.json',
       'project.identity.json',
@@ -111,6 +117,7 @@ describe('项目重命名', () => {
     expect(report.status).toBe('applied')
     expect(report.staleOccurrences).toEqual([{ path: 'GOAL.md', line: 1, value: 'Old Experiment', allowed: true }])
     expect(await readFile(join(root, 'README.md'), 'utf8')).toContain('# Harness Pair Lab')
+    expect(await readFile(join(root, 'README.zh-CN.md'), 'utf8')).toContain('# Harness Pair Lab')
     expect(await readFile(join(root, 'docs', 'usage.md'), 'utf8')).toBe(
       'Clone harness-pair-lab and install harness-pair-lab. Safe paired plugin experiments.\n',
     )
