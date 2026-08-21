@@ -104,6 +104,8 @@ CLI 是可信的本地自动化边界，可运行 manifest 中显式声明的测
 
 完整 CLI 包含 `init`、`validate`、`freeze`、`run`、`status`、`compare`、`decision` 和 `report`。稳定退出码及真实模型 smoke 的运行方法见 [验收记录](docs/verification.md)。
 
+付费真实模型 CI 与普通 PR CI 隔离，只能手工触发。启用前必须按[受保护的真实模型 CI 指南](docs/live-model-ci.zh-CN.md)配置 `live-model` GitHub Environment、审批/分支规则、Environment Secret 和保护变量；仅提交 workflow 文件不代表远端保护已经生效。
+
 ## 开发与验证
 
 ```bash

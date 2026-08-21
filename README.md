@@ -108,6 +108,8 @@ The CLI is a trusted local automation boundary and may run commands explicitly d
 
 The complete CLI includes `init`, `validate`, `freeze`, `run`, `status`, `compare`, `decision`, and `report`. Stable exit codes and the live-model smoke procedure are documented in the [verification record](docs/verification.md).
 
+Paid live-model CI is intentionally manual and isolated from pull-request CI. Before enabling it, configure the `live-model` GitHub Environment, reviewer/branch rules, Environment Secret, and guard variable described in the [protected live-model CI guide](docs/live-model-ci.md). Committing the workflow file alone does not create a protected setup.
+
 ## Development
 
 ```bash
