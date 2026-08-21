@@ -1,6 +1,11 @@
 node_modules/
 lib/
 coverage/
+.env
+.env.*
+!.env.example
+case-studies/**/experiment.local.yml
+.plugin-experiments/
 .worktrees/
 .idea/
 .DS_Store

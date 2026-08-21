@@ -51,6 +51,10 @@ node --import tsx src/cli/bin.ts report --manifest ./my-experiment/experiment.ym
 
 Open `./evidence/<experiment-id>/report.html` to view the static report. To test your own plugin, edit `experiment.yml`, `evals/cases.yml`, and the two variant configurations created by `init`.
 
+## Reproducible real case
+
+The [Toolshrink context-budget case](case-studies/toolshrink-context-budget/README.md) pins DSH, model parameters, one community-plugin commit, deterministic fixtures, and a peak-rate pricing snapshot. Its publishable summary excludes raw sessions, tool output, spill contents, absolute paths, and credentials.
+
 ## Understand the outcome
 
 | Outcome | What it means | Typical next step |
@@ -68,7 +72,7 @@ Task success is the default primary metric. You can also guard token usage, P95 
 - **Balanced order:** Pair order alternates to reduce fixed first-run bias.
 - **Isolated environments:** Each arm gets its own `DSH_HOME`, profile, workspace, session root, and frozen plugin artifact.
 - **Traceable artifacts:** Sources may be a local directory, tarball, exact npm version, or pinned GitHub commit; hashes are checked again before execution.
-- **Proven exposure:** Session events, tool calls, or plugin receipts show whether the target plugin actually participated.
+- **Proven exposure:** Session events, tool calls, plugin receipts, or workspace changes show whether the target plugin actually participated.
 - **Blind comparison:** An optional comparator sees anonymous A/B outputs; identity is revealed only after comparison.
 - **Honest infrastructure failures:** Provider outages, corrupted sessions, and environment mismatches become invalid evidence or `INCONCLUSIVE`, not fake Candidate regressions.
 
@@ -95,6 +99,8 @@ Completed pairs are reused by later `run` commands, and partial state is never s
 ## Connect to real DSH
 
 Non-`mock` providers invoke the exact pinned version `@deepseek-ai/dsh@0.1.0-rc.7`. Add model credentials and other environment variables by name to `extensions.environment_allowlist`. Fingerprints and artifact metadata store only the allowlist hash, never the original values.
+
+OpenAI-compatible Chat Completions endpoints can use `provider: openai-compatible` with an explicit `parameters.host`, `parameters.apiKeyEnv`, and model `name`. The API key value remains in the referenced environment variable; literal keys in a manifest are rejected. See the [manifest contract](docs/manifest.md#runtime) for the exact shape and protocol boundary.
 
 Plugin and test-command stdout, stderr, and session logs are retained as raw evidence, so integrations must still avoid printing secrets.
 

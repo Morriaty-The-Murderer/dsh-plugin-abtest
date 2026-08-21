@@ -48,6 +48,13 @@ function evaluateDetector(evidence: ExposureEvidence, detector: ExposureDetector
         evidence,
         (type, data) => type === EXPOSURE_EVENT && (detector.plugin === undefined || data.plugin === detector.plugin),
       )
+    case 'workspace_file_change': {
+      const paths = evidence.workspaceDiff?.[detector.change] ?? []
+      const matched = paths.filter((path) =>
+        detector.match === 'prefix' ? path.startsWith(detector.path) : path === detector.path,
+      )
+      return matched.map((path) => `workspace-diff:${detector.change}:${path}`)
+    }
   }
 }
 

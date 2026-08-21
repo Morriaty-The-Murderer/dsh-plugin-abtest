@@ -1,0 +1,68 @@
+schema_version: 1
+
+experiment:
+  id: toolshrink-context-budget
+  name: Toolshrink conservative versus compact context budget
+  hypothesis: A smaller Toolshrink budget preserves deterministic task success while reducing model-visible tool output.
+
+target:
+  plugin: toolshrink
+
+variants:
+  control:
+    source: github:unclecode/toolshrink#3d654ab491146dd685f0b47fef94e78a14590860
+    config: variants/control.yml
+  candidate:
+    source: github:unclecode/toolshrink#3d654ab491146dd685f0b47fef94e78a14590860
+    config: variants/candidate.yml
+
+runtime:
+  dsh_version: 0.1.0-rc.7
+  profile: headless
+  model:
+    provider: deepseek-official
+    name: deepseek-v4-flash
+    parameters:
+      reasoningEffort: off
+      maxTokens: 2048
+  workspace_fixture: fixtures/workspace
+  sandbox: isolated-workspace
+
+suite:
+  cases: evals/cases.yml
+  repetitions: 2
+
+execution:
+  order: counterbalanced
+  concurrency: 1
+  timeout_ms: 600000
+  require_exposure: true
+  exposure_detectors:
+    - id: original-output-spilled
+      kind: workspace_file_change
+      path: .toolshrink-spill/
+      change: added
+      match: prefix
+
+decision:
+  minimum_valid_pairs: 4
+  minimum_unique_cases: 2
+  hard_gates:
+    boot_success: true
+    activation_success: true
+    critical_security_violations: 0
+    critical_case_regressions: 0
+  primary:
+    metric: task_success_rate
+    policy: superiority
+    minimum_absolute_lift: 0.01
+  guardrails:
+    median_token_increase_pct: 0
+    p95_latency_increase_pct: 50
+    tool_error_rate_increase_pp: 0
+
+extensions:
+  environment_allowlist:
+    - DEEPSEEK_API_KEY
+    - LANG
+    - TZ

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-08-21",
+  "source": "https://api-docs.deepseek.com/quick_start/pricing/",
+  "currency": "USD",
+  "model": "deepseek-v4-flash",
+  "assumption": "peak-rate-upper-bound",
+  "perMillionTokens": {
+    "inputCacheHit": 0.014,
+    "inputCacheMiss": 0.44,
+    "output": 1.32
+  }
+}

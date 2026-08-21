@@ -56,6 +56,27 @@ describe('FrozenArtifact', () => {
     })
   })
 
+  it('并发冻结相同来源时复用同一个完整缓存制品', async () => {
+    const fixture = await createPluginFixture()
+
+    const artifacts = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        freezeVariant(
+          { id: index % 2 === 0 ? 'control' : 'candidate', source: 'local:plugin' },
+          { baseDir: fixture.root, cacheRoot: fixture.cacheRoot },
+        ),
+      ),
+    )
+
+    expect(new Set(artifacts.map((artifact) => artifact.materializedPath)).size).toBe(1)
+    expect(new Set(artifacts.map((artifact) => artifact.artifactHash)).size).toBe(1)
+    const firstArtifact = artifacts[0]
+    if (firstArtifact === undefined) throw new Error('Expected at least one frozen artifact')
+    expect(JSON.parse(await readFile(join(firstArtifact.materializedPath, 'package.json'), 'utf8'))).toMatchObject({
+      name: 'fixture-plugin',
+    })
+  })
+
   it('制品 metadata 不包含 ambient secret 原文', async () => {
     const fixture = await createPluginFixture()
     const sentinel = 'SENTINEL_SECRET_MUST_NOT_LEAK'

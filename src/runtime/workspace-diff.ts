@@ -19,6 +19,28 @@ export interface WorkspaceDiff {
   deleted: string[]
 }
 
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+}
+
+export async function readWorkspaceDiff(path: string): Promise<WorkspaceDiff> {
+  const value = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
+  if (
+    value.schemaVersion !== 1 ||
+    !isStringArray(value.added) ||
+    !isStringArray(value.modified) ||
+    !isStringArray(value.deleted)
+  ) {
+    throw new Error(`Invalid workspace diff at ${path}`)
+  }
+  return {
+    schemaVersion: 1,
+    added: value.added,
+    modified: value.modified,
+    deleted: value.deleted,
+  }
+}
+
 function portablePath(root: string, path: string): string {
   return relative(root, path).split(sep).join('/')
 }

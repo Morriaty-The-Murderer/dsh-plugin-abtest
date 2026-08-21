@@ -53,6 +53,7 @@ export async function freezeVariant(variant: Variant, context: FreezeContext): P
   }
   const configPath =
     variant.configPath === undefined ? undefined : resolveProjectPath(context.baseDir, variant.configPath)
+  const dshBundlePath = bundlePatchPath(materialized.path, packageJson)
   return {
     packageName: packageJson.name,
     packageVersion: packageJson.version,
@@ -61,7 +62,8 @@ export async function freezeVariant(variant: Variant, context: FreezeContext): P
     artifactHash: materialized.hash,
     pluginConfigHash: await optionalFileHash(configPath),
     dependencyLockHash: await optionalFileHash(await dependencyLockPath(materialized.path)),
-    dshBundleHash: await optionalFileHash(bundlePatchPath(materialized.path, packageJson)),
+    dshBundleHash: await optionalFileHash(dshBundlePath),
     materializedPath: materialized.path,
+    usesDshBundle: dshBundlePath !== undefined,
   }
 }

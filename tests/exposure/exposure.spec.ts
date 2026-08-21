@@ -56,4 +56,44 @@ describe('exposure detectors', () => {
       { id: 'otel', matched: true, evidenceRefs: ['otel:plugin.name'] },
     ])
   })
+
+  it('workspace diff 中声明的文件变更能证明非工具型插件已暴露', () => {
+    const receipt = detectExposure(
+      {
+        events: [],
+        workspaceDiff: {
+          schemaVersion: 1,
+          added: ['toolshrink.log', '.toolshrink-spill/bash-a1b2c3.txt'],
+          modified: ['result.json'],
+          deleted: [],
+        },
+      },
+      [
+        { id: 'cut-log', kind: 'workspace_file_change', path: 'toolshrink.log', change: 'added' },
+        { id: 'wrong-change', kind: 'workspace_file_change', path: 'toolshrink.log', change: 'modified' },
+        {
+          id: 'spill-created',
+          kind: 'workspace_file_change',
+          path: '.toolshrink-spill/',
+          change: 'added',
+          match: 'prefix',
+        },
+      ],
+    )
+
+    expect(receipt.state).toBe('exposed')
+    expect(receipt.detectors).toEqual([
+      {
+        id: 'cut-log',
+        matched: true,
+        evidenceRefs: ['workspace-diff:added:toolshrink.log'],
+      },
+      { id: 'wrong-change', matched: false, evidenceRefs: [] },
+      {
+        id: 'spill-created',
+        matched: true,
+        evidenceRefs: ['workspace-diff:added:.toolshrink-spill/bash-a1b2c3.txt'],
+      },
+    ])
+  })
 })

@@ -24,6 +24,30 @@ runtime:
 
 其他版本会在校验阶段失败，避免 manifest 声明的契约与实际 adapter 不一致。`runtime.model.provider: mock` 使用仓库内 scripted provider；其他 provider 调用固定的 DSH CLI，并要求调用方完成相应模型配置。
 
+`deepseek-official` 当前只接受会实际写入隔离 profile 的 `reasoningEffort` 和 `maxTokens`。未接入 profile 的字段会在校验阶段失败，避免参数只进入 fingerprint、却没有影响真实请求。
+
+OpenAI-compatible Chat Completions 端点使用固定 provider 路由 `openai-compatible`：
+
+```yaml
+runtime:
+  model:
+    provider: openai-compatible
+    name: gateway-model-v1
+    parameters:
+      host: https://gateway.example/v1
+      apiKeyEnv: GATEWAY_API_KEY
+      contextWindow: 128000
+      maxTokens: 2048
+
+extensions:
+  environment_allowlist:
+    - GATEWAY_API_KEY
+    - LANG
+    - TZ
+```
+
+`name` 是实际发送的 model id；`host` 会映射到 DSH pi-ai adapter 的 `baseURL`，必须是无内嵌凭据、query 或 fragment 的绝对 HTTP(S) URL。`apiKeyEnv` 只保存环境变量名，并且该变量名必须同时进入 `environment_allowlist`；字面 `apiKey`/`api_key` 会被拒绝。可选 `contextWindow` 和 `maxTokens` 必须是正安全整数。该路由固定使用 `openai-completions` 协议，不声称兼容 Responses API、Azure API key 认证或 OAuth。
+
 ## 并发与暴露证明
 
 `execution.concurrency` 限制同时运行的 pair 数量；单个 pair 内仍按 counterbalanced 顺序依次执行两臂。
@@ -58,11 +82,12 @@ execution:
 | `tool_name` | `tool_name` | DSH session tool call |
 | `session_event` | `event_type` | DSH session event |
 | `custom_receipt` | 可选 `plugin` | 稳定 receipt event |
+| `workspace_file_change` | `path`、`change`，可选 `match` | 运行前后 workspace diff |
 | `prompt_section` | `text` | 调用方提供的 system prompt |
 | `service_operation` | `operation` | 调用方提供的 service operation |
 | `otel_attribute` | `key`，可选 `value` | 调用方提供的 OTel attribute |
 
-前三类可由标准 CLI 的 append-only session 证据直接判断。后三类通过公开 core detector API 支持；若标准 CLI 没有相应可选证据，它们会保持未匹配。`require_exposure: true` 时，未证实暴露的 pair 不参与效果结论，并最终进入 `INCONCLUSIVE`。
+前三类可由标准 CLI 的 append-only session 证据直接判断。`workspace_file_change` 使用标准 CLI 生成的工作区变更清单，不读取文件内容；`match: prefix` 可证明未知文件名的受控副作用，例如插件实际生成的 spill 文件。其余三类通过公开 core detector API 支持；若标准 CLI 没有相应可选证据，它们会保持未匹配。`require_exposure: true` 时，未证实暴露的 pair 不参与效果结论，并最终进入 `INCONCLUSIVE`。
 
 ## 环境变量
 

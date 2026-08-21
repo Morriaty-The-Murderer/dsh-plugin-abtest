@@ -89,6 +89,49 @@ describe('实验 manifest', () => {
     })
   })
 
+  it('workspace file change detector 只接受 workspace 内的便携相对路径', () => {
+    const withDetector = (path: string) => ({
+      ...validManifest,
+      execution: {
+        ...validManifest.execution,
+        exposure_detectors: [{ id: 'cut-log', kind: 'workspace_file_change', path, change: 'added' }],
+      },
+    })
+
+    expect(parseManifest(withDetector('toolshrink.log')).execution.exposure_detectors).toEqual([
+      { id: 'cut-log', kind: 'workspace_file_change', path: 'toolshrink.log', change: 'added' },
+    ])
+    expect(() => parseManifest(withDetector('../outside.log'))).toThrow(/exposure_detectors/i)
+    expect(() => parseManifest(withDetector('/absolute.log'))).toThrow(/exposure_detectors/i)
+    expect(() => parseManifest(withDetector('windows\\path.log'))).toThrow(/exposure_detectors/i)
+
+    expect(
+      parseManifest({
+        ...validManifest,
+        execution: {
+          ...validManifest.execution,
+          exposure_detectors: [
+            {
+              id: 'spill-created',
+              kind: 'workspace_file_change',
+              path: '.toolshrink-spill/',
+              change: 'added',
+              match: 'prefix',
+            },
+          ],
+        },
+      }).execution.exposure_detectors,
+    ).toEqual([
+      {
+        id: 'spill-created',
+        kind: 'workspace_file_change',
+        path: '.toolshrink-spill/',
+        change: 'added',
+        match: 'prefix',
+      },
+    ])
+  })
+
   it('拒绝逃出 manifest 根目录的 fixture 路径', async () => {
     const manifest = parseManifest({
       ...validManifest,
@@ -115,6 +158,181 @@ describe('实验 manifest', () => {
       path: 'runtime.dsh_version',
       message: 'DSH version must be exactly 0.1.0-rc.7 for this adapter',
     })
+  })
+
+  it('真实 DeepSeek 运行只接受会实际写入 profile 的固定模型参数', async () => {
+    const allowed = parseManifest({
+      ...validManifest,
+      runtime: {
+        ...validManifest.runtime,
+        model: {
+          provider: 'deepseek-official',
+          name: 'deepseek-v4-flash',
+          parameters: { reasoningEffort: 'off', maxTokens: 2_048 },
+        },
+      },
+    })
+    expect(await validateManifestSemantics(allowed, '/tmp/manifest-fixture', { checkPaths: false })).toEqual([])
+
+    const unsupported = parseManifest({
+      ...validManifest,
+      runtime: {
+        ...validManifest.runtime,
+        model: {
+          provider: 'deepseek-official',
+          name: 'deepseek-v4-flash',
+          parameters: { temperature: 0 },
+        },
+      },
+    })
+    expect(await validateManifestSemantics(unsupported, '/tmp/manifest-fixture', { checkPaths: false })).toContainEqual(
+      {
+        code: 'unsupported_model_parameter',
+        path: 'runtime.model.parameters.temperature',
+        message: 'Model parameter is not applied by the deepseek-official profile adapter',
+      },
+    )
+  })
+
+  it('OpenAI-compatible 运行接受 host、凭据引用和固定模型容量', async () => {
+    const manifest = parseManifest({
+      ...validManifest,
+      extensions: { environment_allowlist: ['GATEWAY_API_KEY', 'LANG', 'TZ'] },
+      runtime: {
+        ...validManifest.runtime,
+        model: {
+          provider: 'openai-compatible',
+          name: 'gateway-model-v1',
+          parameters: {
+            host: 'https://gateway.example/v1',
+            apiKeyEnv: 'GATEWAY_API_KEY',
+            contextWindow: 128_000,
+            maxTokens: 2_048,
+          },
+        },
+      },
+    })
+
+    expect(await validateManifestSemantics(manifest, '/tmp/manifest-fixture', { checkPaths: false })).toEqual([])
+  })
+
+  it('OpenAI-compatible 凭据引用必须显式进入环境 allowlist', async () => {
+    const manifest = parseManifest({
+      ...validManifest,
+      runtime: {
+        ...validManifest.runtime,
+        model: {
+          provider: 'openai-compatible',
+          name: 'gateway-model-v1',
+          parameters: {
+            host: 'https://gateway.example/v1',
+            apiKeyEnv: 'GATEWAY_API_KEY',
+          },
+        },
+      },
+    })
+
+    expect(await validateManifestSemantics(manifest, '/tmp/manifest-fixture', { checkPaths: false })).toContainEqual({
+      code: 'credential_not_allowlisted',
+      path: 'extensions.environment_allowlist',
+      message: 'GATEWAY_API_KEY must be explicitly named in extensions.environment_allowlist',
+    })
+  })
+
+  it('OpenAI-compatible 运行要求完整连接参数和正整数容量', async () => {
+    const manifest = parseManifest({
+      ...validManifest,
+      extensions: { environment_allowlist: ['not-an-env-name'] },
+      runtime: {
+        ...validManifest.runtime,
+        model: {
+          provider: 'openai-compatible',
+          name: 'gateway-model-v1',
+          parameters: {
+            apiKeyEnv: 'not-an-env-name',
+            contextWindow: 0,
+            maxTokens: 1.5,
+          },
+        },
+      },
+    })
+
+    expect(await validateManifestSemantics(manifest, '/tmp/manifest-fixture', { checkPaths: false })).toEqual(
+      expect.arrayContaining([
+        {
+          code: 'invalid_model_parameter',
+          path: 'runtime.model.parameters.host',
+          message: 'host is required for the openai-compatible provider',
+        },
+        {
+          code: 'invalid_model_parameter',
+          path: 'runtime.model.parameters.apiKeyEnv',
+          message: 'apiKeyEnv must be an environment variable name',
+        },
+        {
+          code: 'invalid_model_parameter',
+          path: 'runtime.model.parameters.contextWindow',
+          message: 'contextWindow must be a positive safe integer',
+        },
+        {
+          code: 'invalid_model_parameter',
+          path: 'runtime.model.parameters.maxTokens',
+          message: 'maxTokens must be a positive safe integer',
+        },
+      ]),
+    )
+
+    const withoutCredentialReference = parseManifest({
+      ...validManifest,
+      runtime: {
+        ...validManifest.runtime,
+        model: {
+          provider: 'openai-compatible',
+          name: 'gateway-model-v1',
+          parameters: { host: 'https://gateway.example/v1' },
+        },
+      },
+    })
+    expect(
+      await validateManifestSemantics(withoutCredentialReference, '/tmp/manifest-fixture', { checkPaths: false }),
+    ).toContainEqual({
+      code: 'invalid_model_parameter',
+      path: 'runtime.model.parameters.apiKeyEnv',
+      message: 'apiKeyEnv is required for the openai-compatible provider',
+    })
+  })
+
+  it('OpenAI-compatible 运行拒绝字面 API key 和不可用 host', async () => {
+    const manifest = parseManifest({
+      ...validManifest,
+      runtime: {
+        ...validManifest.runtime,
+        model: {
+          provider: 'openai-compatible',
+          name: 'gateway-model-v1',
+          parameters: {
+            host: 'file:///tmp/provider',
+            apiKeyEnv: 'GATEWAY_API_KEY',
+            apiKey: 'secret-must-not-enter-the-manifest',
+          },
+        },
+      },
+    })
+
+    expect(await validateManifestSemantics(manifest, '/tmp/manifest-fixture', { checkPaths: false })).toEqual(
+      expect.arrayContaining([
+        {
+          code: 'invalid_model_parameter',
+          path: 'runtime.model.parameters.host',
+          message: 'host must be an absolute http or https URL without credentials, query, or fragment',
+        },
+        {
+          code: 'unsupported_model_parameter',
+          path: 'runtime.model.parameters.apiKey',
+          message: 'Literal API keys are forbidden; use apiKeyEnv and the environment allowlist',
+        },
+      ]),
+    )
   })
 
   it('从 YAML 文件加载并保留严格类型', async () => {

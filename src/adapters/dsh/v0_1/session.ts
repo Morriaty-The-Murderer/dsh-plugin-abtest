@@ -81,7 +81,10 @@ async function findSessionArtifacts(root: string): Promise<string[]> {
 export async function selectPrimarySession(root: string): Promise<CollectedSession> {
   const sessions = await Promise.all((await findSessionArtifacts(root)).map(collectSessionLog))
   const roots = sessions.filter(
-    (session) => (session.header.delegationDepth ?? 0) === 0 && session.header.parentId === undefined,
+    (session) =>
+      (session.header.delegationDepth ?? 0) === 0 &&
+      session.header.parentId === undefined &&
+      session.header.parentSession === undefined,
   )
   if (roots.length !== 1) throw new Error(`Expected exactly one primary DSH session, found ${roots.length}`)
   return roots[0] as CollectedSession

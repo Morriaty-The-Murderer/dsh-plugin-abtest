@@ -18,10 +18,28 @@ describe('collectRunEvidence', () => {
     await mkdir(sessionRoot, { recursive: true })
     const records = [
       { type: 'session', version: 0, id: 'primary', delegationDepth: 0 },
-      { type: 'tool/call', seq: 0, data: { name: 'read', callId: 'call-1' } },
-      { type: 'tool/result', seq: 1, data: { callId: 'call-1', ok: true } },
-      { type: 'assistant/final', seq: 2, data: { text: 'done' } },
-      { type: 'usage', seq: 3, data: { input: 10, output: 5, reasoning: 2, cacheRead: 3, cacheWrite: 1 } },
+      {
+        type: 'assistant/message',
+        seq: 0,
+        data: {
+          message: { role: 'assistant', content: [{ type: 'tool-call', id: 'call-1', name: 'read' }] },
+          usage: { inputTokens: 4, outputTokens: 2, cacheReadTokens: 1 },
+        },
+      },
+      { type: 'tool/call', seq: 1, data: { name: 'read', callId: 'call-1' } },
+      {
+        type: 'tool/result',
+        seq: 2,
+        data: { message: { callId: 'call-1', role: 'user', content: [], isError: false } },
+      },
+      {
+        type: 'assistant/message',
+        seq: 3,
+        data: {
+          message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+          usage: { inputTokens: 10, outputTokens: 5, reasoningTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 1 },
+        },
+      },
     ]
     await writeFile(
       join(sessionRoot, 'session.jsonl'),
@@ -32,7 +50,10 @@ describe('collectRunEvidence', () => {
     const workspaceDiffPath = join(root, 'workspace-diff.json')
     await writeFile(stdoutPath, 'stdout')
     await writeFile(stderrPath, '')
-    await writeFile(workspaceDiffPath, '{}')
+    await writeFile(
+      workspaceDiffPath,
+      `${JSON.stringify({ schemaVersion: 1, added: ['toolshrink.log'], modified: [], deleted: [] })}\n`,
+    )
 
     const evidence = await collectRunEvidence({
       sessionRoot: join(root, 'sessions'),
@@ -47,8 +68,14 @@ describe('collectRunEvidence', () => {
 
     expect(evidence.finalOutput).toBe('done')
     expect(evidence.toolCalls).toEqual([{ name: 'read', callId: 'call-1', failed: false }])
-    expect(evidence.runEvidence.tokenUsage).toEqual({ input: 10, output: 5, reasoning: 2, cacheRead: 3, cacheWrite: 1 })
+    expect(evidence.runEvidence.tokenUsage).toEqual({ input: 14, output: 7, reasoning: 2, cacheRead: 4, cacheWrite: 1 })
     expect(evidence.runEvidence.workspaceDiffPath).toBe(workspaceDiffPath)
+    expect(evidence.workspaceDiff).toEqual({
+      schemaVersion: 1,
+      added: ['toolshrink.log'],
+      modified: [],
+      deleted: [],
+    })
     expect(evidence.session.header.id).toBe('primary')
   })
 })

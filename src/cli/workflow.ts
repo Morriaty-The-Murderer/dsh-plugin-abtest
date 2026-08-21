@@ -55,9 +55,13 @@ if (behavior.bootFailure) {
 events.push({ type: 'plugin/activated', seq: 1, data: { name: artifact.name } });
 if (!behavior.unexposed) events.push({ type: '${EXPOSURE_EVENT}', seq: 2, data: { plugin: artifact.name } });
 events.push({ type: 'tool/call', seq: 3, data: { name: 'fixture_tool', callId: 'call-1' } });
-events.push({ type: 'tool/result', seq: 4, data: { callId: 'call-1', ok: true } });
-events.push({ type: 'assistant/final', seq: 5, data: { text: behavior.output || '' } });
-events.push({ type: 'usage', seq: 6, data: { input: behavior.inputTokens || 50, output: behavior.outputTokens || 50, reasoning: 0, cacheRead: 0, cacheWrite: 0 } });
+events.push({ type: 'tool/result', seq: 4, data: {
+  message: { role: 'user', callId: 'call-1', content: [], isError: false },
+} });
+events.push({ type: 'assistant/message', seq: 5, data: {
+  message: { role: 'assistant', content: [{ type: 'text', text: behavior.output || '' }] },
+  usage: { inputTokens: behavior.inputTokens || 50, outputTokens: behavior.outputTokens || 50 },
+} });
 fs.writeFileSync(path.join(process.env.DSH_EXPERIMENT_SESSION_ROOT, 'session.jsonl'), events.map(JSON.stringify).join('\\n') + '\\n');
 process.stdout.write(behavior.output || '');
 `
@@ -111,6 +115,14 @@ function exposureDetectors(manifest: ExperimentManifest, pluginName: string): Ex
         }
       case 'custom_receipt':
         return { id: detector.id, kind: detector.kind, plugin: detector.plugin ?? pluginName }
+      case 'workspace_file_change':
+        return {
+          id: detector.id,
+          kind: detector.kind,
+          path: detector.path,
+          change: detector.change,
+          ...(detector.match === undefined ? {} : { match: detector.match }),
+        }
     }
     detector satisfies never
     throw new ValidationFailure('Unsupported exposure detector')
@@ -495,12 +507,17 @@ export async function runExperiment(
       : await runPair({
           outputRoot,
           experimentId: manifest.experiment.id,
+          targetPlugin: manifest.target.plugin,
           scheduled,
           fixture,
           timeoutMs: manifest.execution.timeout_ms,
           terminationGraceMs: 1_000,
           environment: process.env,
-          model: { provider: manifest.runtime.model.provider, name: manifest.runtime.model.name },
+          model: {
+            provider: manifest.runtime.model.provider,
+            name: manifest.runtime.model.name,
+            parameters: manifest.runtime.model.parameters ?? {},
+          },
           arms: {
             control: {
               artifact: artifacts.control,
@@ -535,7 +552,12 @@ export async function runExperiment(
         })
         run.evidence = collected[variant].runEvidence
         run.exposure = detectExposure(
-          collected[variant].session,
+          {
+            events: collected[variant].session.events,
+            ...(collected[variant].workspaceDiff === undefined
+              ? {}
+              : { workspaceDiff: collected[variant].workspaceDiff }),
+          },
           exposureDetectors(manifest, artifacts[variant].packageName),
         )
       } catch (error) {

@@ -1,0 +1,5 @@
+maxChars: 4000
+maxLines: 40
+maxLineChars: 200
+spillDir: .toolshrink-spill
+log: toolshrink.log

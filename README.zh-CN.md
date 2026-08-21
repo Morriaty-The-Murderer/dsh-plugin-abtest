@@ -49,6 +49,10 @@ node --import tsx src/cli/bin.ts report --manifest ./my-experiment/experiment.ym
 
 打开 `./evidence/<experiment-id>/report.html` 即可查看静态报告。要测试自己的插件，只需修改初始化目录里的 `experiment.yml`、`evals/cases.yml` 和两个 variant 配置。
 
+## 可复现真实案例
+
+[Toolshrink 上下文预算案例](case-studies/toolshrink-context-budget/README.zh-CN.md)固定了 DSH、模型参数、社区插件 commit、确定性 fixture 和峰值费率快照。可发布摘要不会包含原始 session、工具输出、spill 内容、绝对路径或凭证。
+
 ## 怎么判断
 
 | 结果 | 含义 | 常见下一步 |
@@ -66,7 +70,7 @@ node --import tsx src/cli/bin.ts report --manifest ./my-experiment/experiment.ym
 - **顺序平衡**：运行顺序按 pair 交替，减少固定先后顺序带来的偏差。
 - **环境隔离**：每个 arm 拥有独立的 `DSH_HOME`、profile、workspace、session root 和冻结插件制品。
 - **制品可追溯**：支持本地目录、tarball、精确 npm 版本和固定 GitHub commit；运行前会再次校验制品哈希。
-- **暴露可证明**：从 session 事件、工具调用或插件 receipt 判断目标插件是否真正参与了运行。
+- **暴露可证明**：从 session 事件、工具调用、插件 receipt 或 workspace 变更判断目标插件是否真正参与了运行。
 - **盲评不泄露身份**：可选 comparator 只看到匿名的 A/B 输出，映射在比较完成后才揭示。
 - **失败不伪装成回退**：provider outage、损坏会话、环境差异等基础设施问题进入无效证据或 `INCONCLUSIVE`。
 
@@ -93,6 +97,8 @@ node --import tsx src/cli/bin.ts report --manifest ./my-experiment/experiment.ym
 ## 接入真实 DSH
 
 非 `mock` provider 会调用精确固定的 `@deepseek-ai/dsh@0.1.0-rc.7`。模型凭证等环境变量必须按名称加入 `extensions.environment_allowlist`；fingerprint 和制品元数据只记录 allowlist 哈希，不记录原始值。插件与测试命令的 stdout、stderr 和 session log 会作为原始证据保存，因此接入方仍应避免主动输出 secret。
+
+OpenAI-compatible Chat Completions 端点可使用 `provider: openai-compatible`，并显式配置 `parameters.host`、`parameters.apiKeyEnv` 和模型 `name`。API key 实际值只留在被引用的环境变量中；manifest 中的字面密钥会被拒绝。精确字段和协议边界见 [manifest 契约](docs/manifest.md#runtime)。
 
 CLI 是可信的本地自动化边界，可运行 manifest 中显式声明的测试命令。可选 DSH/Cordis 工具入口面向模型调用，因此会拒绝包含 `command_test` 的实验，避免把模型工具变成任意命令执行入口。
 

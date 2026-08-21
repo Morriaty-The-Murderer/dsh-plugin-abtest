@@ -23,12 +23,13 @@ export interface RunnerArm {
 export interface RunPairInput {
   outputRoot: string
   experimentId: string
+  targetPlugin: string
   scheduled: ScheduledPair
   fixture: RuntimeFixture
   timeoutMs: number
   terminationGraceMs: number
   environment: Readonly<Record<string, string | undefined>>
-  model?: { provider: string; name: string }
+  model?: { provider: string; name: string; parameters?: Readonly<Record<string, unknown>> }
   arms: Record<VariantId, RunnerArm>
 }
 
@@ -47,7 +48,8 @@ async function prepareArm(
   layout: ArmLayout,
   fixture: RuntimeFixture,
   arm: RunnerArm,
-  model?: { provider: string; name: string },
+  targetPlugin: string,
+  model?: { provider: string; name: string; parameters?: Readonly<Record<string, unknown>> },
 ): Promise<void> {
   await mkdir(layout.root, { recursive: true })
   await Promise.all([
@@ -56,6 +58,7 @@ async function prepareArm(
     mkdir(layout.sessionRoot, { recursive: true }),
   ])
   await prepareIsolatedProfile(layout, arm.artifact, {
+    targetPlugin,
     ...(arm.pluginConfig === undefined ? {} : { pluginConfig: arm.pluginConfig }),
     ...(model === undefined ? {} : { model }),
   })
@@ -123,8 +126,8 @@ export async function runPair(input: RunPairInput): Promise<RunPair> {
     input.scheduled.repetition,
   )
   await Promise.all([
-    prepareArm(layout.control, input.fixture, input.arms.control, input.model),
-    prepareArm(layout.candidate, input.fixture, input.arms.candidate, input.model),
+    prepareArm(layout.control, input.fixture, input.arms.control, input.targetPlugin, input.model),
+    prepareArm(layout.candidate, input.fixture, input.arms.candidate, input.targetPlugin, input.model),
   ])
   const runs = {} as Record<VariantId, Run>
   for (const variant of input.scheduled.order) {

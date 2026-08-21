@@ -21,17 +21,17 @@ if (!behavior.unexposed) {
   events.push({ type: 'dsh.plugin-experiment/exposure', seq: 2, data: { plugin: artifact.name } })
 }
 events.push({ type: 'tool/call', seq: 3, data: { name: 'fixture_tool', callId: 'call-1' } })
-events.push({ type: 'tool/result', seq: 4, data: { callId: 'call-1', ok: true } })
-events.push({ type: 'assistant/final', seq: 5, data: { text: behavior.output ?? '' } })
 events.push({
-  type: 'usage',
-  seq: 6,
+  type: 'tool/result',
+  seq: 4,
+  data: { message: { role: 'user', callId: 'call-1', content: [], isError: false } },
+})
+events.push({
+  type: 'assistant/message',
+  seq: 5,
   data: {
-    input: behavior.inputTokens ?? 50,
-    output: behavior.outputTokens ?? 50,
-    reasoning: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
+    message: { role: 'assistant', content: [{ type: 'text', text: behavior.output ?? '' }] },
+    usage: { inputTokens: behavior.inputTokens ?? 50, outputTokens: behavior.outputTokens ?? 50 },
   },
 })
 fs.writeFileSync(
