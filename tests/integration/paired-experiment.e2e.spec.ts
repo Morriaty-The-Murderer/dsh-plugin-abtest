@@ -11,7 +11,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
-async function scenario(candidateFixture: string, timeoutMs?: number) {
+async function scenarioResult(candidateFixture: string, timeoutMs?: number) {
   const root = await mkdtemp(join(tmpdir(), `paired-${candidateFixture}-`))
   roots.push(root)
   const project = join(root, 'project')
@@ -29,7 +29,11 @@ async function scenario(candidateFixture: string, timeoutMs?: number) {
   }
   await freezeExperiment(manifest, output)
   await runExperiment(manifest, output)
-  return decideExperiment(manifest, output)
+  return { decision: await decideExperiment(manifest, output), output }
+}
+
+async function scenario(candidateFixture: string, timeoutMs?: number) {
+  return (await scenarioResult(candidateFixture, timeoutMs)).decision
 }
 
 describe('deterministic candidate fixtures', () => {
@@ -92,13 +96,40 @@ describe('deterministic candidate fixtures', () => {
   })
 
   it('boot failure Candidate 触发 hard gate REJECT', async () => {
-    const decision = await scenario('candidate-boot-failure')
+    const { decision, output } = await scenarioResult('candidate-boot-failure')
     expect(decision.outcome).toBe('REJECT')
     expect(decision.triggeredRules).toContain('hard_gate.boot_success')
+    const measurement = JSON.parse(
+      await readFile(
+        join(output, 'example-plugin-improvement', 'pairs', 'expected-output-0', 'measurement.json'),
+        'utf8',
+      ),
+    )
+    expect(measurement.candidate).toMatchObject({ taskSuccess: false, assertionPassRate: 0 })
   })
 
   it('timeout 归类为 infrastructure failure 并达到 INCONCLUSIVE', async () => {
     const decision = await scenario('candidate-timeout', 30)
+    expect(decision.outcome).toBe('INCONCLUSIVE')
+    expect(decision.triggeredRules).toContain('evidence.infrastructure_failures')
+  })
+
+  it('Control 无法完成运行时归类为基础设施失败并达到 INCONCLUSIVE', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'paired-control-failure-'))
+    roots.push(root)
+    const project = join(root, 'project')
+    const output = join(root, 'output')
+    const { manifest } = await initProject(project)
+    await rm(join(project, 'plugins', 'control-v1'), { recursive: true, force: true })
+    await cp(resolve('fixtures/plugins/candidate-boot-failure'), join(project, 'plugins', 'control-v1'), {
+      recursive: true,
+      force: true,
+    })
+
+    await freezeExperiment(manifest, output)
+    await runExperiment(manifest, output)
+    const decision = await decideExperiment(manifest, output)
+
     expect(decision.outcome).toBe('INCONCLUSIVE')
     expect(decision.triggeredRules).toContain('evidence.infrastructure_failures')
   })

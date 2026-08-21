@@ -63,6 +63,15 @@ describe('collectRunEvidence', () => {
       signal: null,
       durationMs: 100,
       startupMs: 10,
+      startupCheck: {
+        stdoutPath: join(root, 'startup.stdout.log'),
+        stderrPath: join(root, 'startup.stderr.log'),
+        processExitCode: 0,
+        signal: null,
+        durationMs: 20,
+        startupMs: 5,
+        success: true,
+      },
       workspaceDiffPath,
     })
 
@@ -70,6 +79,8 @@ describe('collectRunEvidence', () => {
     expect(evidence.toolCalls).toEqual([{ name: 'read', callId: 'call-1', failed: false }])
     expect(evidence.runEvidence.tokenUsage).toEqual({ input: 14, output: 7, reasoning: 2, cacheRead: 4, cacheWrite: 1 })
     expect(evidence.runEvidence.workspaceDiffPath).toBe(workspaceDiffPath)
+    expect(evidence.runEvidence.startupCheck).toMatchObject({ success: true, processExitCode: 0 })
+    expect(evidence.runEvidence.sessionCollected).toBe(true)
     expect(evidence.workspaceDiff).toEqual({
       schemaVersion: 1,
       added: ['toolshrink.log'],

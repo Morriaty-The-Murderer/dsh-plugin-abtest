@@ -12,6 +12,7 @@ export interface EvidenceProcessInput {
   signal: NodeJS.Signals | null
   durationMs: number
   startupMs: number
+  startupCheck?: RunEvidence['startupCheck']
   workspaceDiffPath?: string
 }
 
@@ -101,10 +102,12 @@ export async function collectRunEvidence(input: EvidenceProcessInput): Promise<C
     stdoutPath: input.stdoutPath,
     stderrPath: input.stderrPath,
     sessionLogPath: session.path,
+    sessionCollected: true,
     processExitCode: input.processExitCode,
     signal: input.signal,
     durationMs: input.durationMs,
     startupMs: input.startupMs,
+    ...(input.startupCheck === undefined ? {} : { startupCheck: input.startupCheck }),
   }
   if (finalOutput !== undefined) runEvidence.finalOutputPath = finalOutputPath
   if (input.workspaceDiffPath !== undefined) runEvidence.workspaceDiffPath = input.workspaceDiffPath

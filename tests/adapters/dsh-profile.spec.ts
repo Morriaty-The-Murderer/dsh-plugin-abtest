@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
-import { prepareIsolatedProfile } from '../../src/adapters/dsh/profile.js'
+import { prepareIsolatedProfile, prepareIsolatedStartupProfile } from '../../src/adapters/dsh/profile.js'
 import type { FrozenArtifact } from '../../src/domain/types.js'
 import { createPairLayout } from '../../src/runtime/layout.js'
 
@@ -103,5 +103,26 @@ describe('DSH 隔离 profile', () => {
       config: { provider: 'openai-compatible', model: 'gateway-model-v1' },
     })
     expect(JSON.stringify(patch)).not.toContain('api_key')
+  })
+
+  it('startup profile 保留目标插件但移除 headless 任务 runner 与模型覆盖', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-profile-startup-'))
+    roots.push(root)
+    const layout = createPairLayout(root, 'experiment', 'case', 0)
+    const bundle = await artifact(root, true)
+
+    await prepareIsolatedStartupProfile(layout.control, bundle, {
+      targetPlugin: 'bundle-target',
+      pluginConfig: { mode: 'audit' },
+      model: { provider: 'deepseek-official', name: 'paid-model', parameters: { maxTokens: 2_048 } },
+    })
+
+    const manifest = JSON.parse(await readFile(join(layout.control.startupProfile, 'package.json'), 'utf8'))
+    const patch = parse(await readFile(join(layout.control.startupProfile, 'cordis.patch.yml'), 'utf8'))
+    expect(manifest.dsh.profile.bundles).toContain('@deepseek-ai/dsh-base')
+    expect(manifest.dsh.profile.bundles).toContain('bundle-plugin')
+    expect(manifest.dsh.profile.bundles).not.toContain('@deepseek-ai/dsh-headless')
+    expect(patch).toContainEqual({ id: 'bundle-target', config: { mode: 'audit' } })
+    expect(JSON.stringify(patch)).not.toContain('paid-model')
   })
 })

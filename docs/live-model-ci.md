@@ -40,6 +40,20 @@ After the workflow is present on the default branch and the Environment is confi
 
 Avoid blindly re-running jobs: every successful retry of the paid step creates a new set of model calls.
 
+## Interpret the result
+
+A green GitHub Actions run means the protected workflow completed and produced a sanitized artifact. It does not mean the Candidate passed the experiment. Read `result.decision.outcome` separately from the workflow status.
+
+Before each paid task, the runner executes a no-model DSH startup audit in an isolated workspace. It boots a dedicated `experiment-startup` profile with the same base and target plugin entries but without the headless task runner, waits for the complete plugin tree to load, and then shuts it down. It does not submit a task or call the provider. The public `execution` section separates:
+
+- startup checks that ran and passed;
+- paid task process success or failure;
+- tasks skipped because startup failed;
+- sessions successfully collected; and
+- sanitized failure categories such as `startup_check_failed`, `task_process_failed`, and `session_collection_failure`.
+
+`startup_check_failed` means DSH or plugin activation failed before a paid task and that task was not run. `task_process_failed` means startup succeeded but the paid task process did not complete successfully. `usage.runsWithUsage` can therefore be lower than `usage.runs`; when any run lacks usage evidence, `cost.complete` is `false` and the estimate must not be treated as the complete run cost.
+
 ## Repository-side verification
 
 The committed workflow contract is checked without using a model key:
@@ -50,4 +64,4 @@ pnpm lint
 pnpm typecheck
 ```
 
-These commands validate the repository configuration only. They cannot prove that the remote Environment, reviewer rules, variable, or secret are configured; verify those settings in GitHub before the first dispatch.
+These commands validate the repository configuration and the no-model startup-audit contract only. They cannot prove that the remote Environment, reviewer rules, variable, secret, or paid provider task is healthy; verify those settings in GitHub and inspect the uploaded outcome separately.

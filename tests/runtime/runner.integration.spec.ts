@@ -121,4 +121,114 @@ describe('runPair', () => {
   it('环境冻结只复制 allowlist 中存在的名称', () => {
     expect(freezeRuntimeEnvironment(['LANG', 'MISSING'], { LANG: 'C', SECRET: 'raw' })).toEqual({ LANG: 'C' })
   })
+
+  it('启动预检成功后单独保留正式任务的非零退出', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'paired-runner-startup-check-'))
+    roots.push(root)
+    const workspace = join(root, 'fixture-workspace')
+    await mkdir(workspace)
+    const fixture = await createRuntimeFixture({
+      workspacePath: workspace,
+      sandboxPolicy: 'isolated-workspace',
+      environmentAllowlist: [],
+    })
+    const controlArtifact = await artifact(root, 'control-plugin', 'control-hash')
+    const candidateArtifact = await artifact(root, 'candidate-plugin', 'candidate-hash')
+    const startupCommand = {
+      executable: process.execPath,
+      args: ['-e', "process.stdout.write('startup-ok')"],
+    }
+    const taskCommand = {
+      executable: process.execPath,
+      args: ['-e', "process.stderr.write('task-failed'); process.exit(9)"],
+    }
+
+    const pair = await runPair({
+      outputRoot: join(root, 'output'),
+      experimentId: 'experiment-startup-check',
+      targetPlugin: 'fixture-target',
+      scheduled: { id: 'case-a-0', caseId: 'case-a', repetition: 0, order: ['control', 'candidate'] },
+      fixture,
+      timeoutMs: 5_000,
+      terminationGraceMs: 100,
+      environment: {},
+      arms: {
+        control: {
+          artifact: controlArtifact,
+          fingerprint: fingerprint(controlArtifact.artifactHash, 'control'),
+          command: taskCommand,
+          startupCommand,
+        },
+        candidate: {
+          artifact: candidateArtifact,
+          fingerprint: fingerprint(candidateArtifact.artifactHash, 'candidate'),
+          command: taskCommand,
+          startupCommand,
+        },
+      },
+    })
+
+    expect(pair.control.evidence.startupCheck).toMatchObject({ success: true, processExitCode: 0, signal: null })
+    expect(pair.candidate.evidence.startupCheck).toMatchObject({ success: true, processExitCode: 0, signal: null })
+    expect(pair.control.evidence.processExitCode).toBe(9)
+    expect(pair.candidate.evidence.processExitCode).toBe(9)
+  })
+
+  it('启动预检失败时不执行正式任务', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'paired-runner-startup-failure-'))
+    roots.push(root)
+    const workspace = join(root, 'fixture-workspace')
+    await mkdir(workspace)
+    const fixture = await createRuntimeFixture({
+      workspacePath: workspace,
+      sandboxPolicy: 'isolated-workspace',
+      environmentAllowlist: [],
+    })
+    const controlArtifact = await artifact(root, 'control-plugin', 'control-hash')
+    const candidateArtifact = await artifact(root, 'candidate-plugin', 'candidate-hash')
+    const startupCommand = { executable: process.execPath, args: ['-e', 'process.exit(7)'] }
+    const taskCommand = {
+      executable: process.execPath,
+      args: ['-e', "require('node:fs').writeFileSync('task-ran.txt', 'unexpected')"],
+    }
+    const outputRoot = join(root, 'output')
+
+    const pair = await runPair({
+      outputRoot,
+      experimentId: 'experiment-startup-failure',
+      targetPlugin: 'fixture-target',
+      scheduled: { id: 'case-a-0', caseId: 'case-a', repetition: 0, order: ['control', 'candidate'] },
+      fixture,
+      timeoutMs: 5_000,
+      terminationGraceMs: 100,
+      environment: {},
+      arms: {
+        control: {
+          artifact: controlArtifact,
+          fingerprint: fingerprint(controlArtifact.artifactHash, 'control'),
+          command: taskCommand,
+          startupCommand,
+        },
+        candidate: {
+          artifact: candidateArtifact,
+          fingerprint: fingerprint(candidateArtifact.artifactHash, 'candidate'),
+          command: taskCommand,
+          startupCommand,
+        },
+      },
+    })
+
+    expect(pair.control.evidence.startupCheck).toMatchObject({
+      success: false,
+      processExitCode: 7,
+      failureCode: 'process_exit_nonzero',
+    })
+    expect(pair.control.evidence.processExitCode).toBeNull()
+    await expect(
+      readFile(
+        join(outputRoot, 'experiment-startup-failure', 'pairs', 'case-a-0', 'control', 'workspace', 'task-ran.txt'),
+        'utf8',
+      ),
+    ).rejects.toMatchObject({ code: 'ENOENT' })
+  })
 })

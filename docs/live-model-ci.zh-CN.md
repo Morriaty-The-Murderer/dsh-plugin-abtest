@@ -40,6 +40,20 @@ workflow 已进入默认分支且 Environment 配置完成后：
 
 不要无判断地点击 rerun：每次成功重跑付费步骤都会产生一组新的模型调用。
 
+## 如何解读结果
+
+GitHub Actions 显示绿色，只代表受保护 workflow 已完整执行并生成脱敏产物，不代表 Candidate 已通过实验。必须把 workflow 状态与 `result.decision.outcome` 分开看。
+
+每个付费任务开始前，runner 会先在独立 workspace 中执行不调用模型的 DSH 启动审计：启动专用的 `experiment-startup` profile，使用相同的 base 与目标插件 entry，但移除 headless 任务 runner；等待整棵插件树加载完成后主动关闭。这个过程不提交任务，也不调用 provider。公开摘要的 `execution` 区域会分别报告：
+
+- 实际执行及通过的启动检查数；
+- 付费任务进程成功数与失败数；
+- 因启动失败而未执行的任务数；
+- 成功采集 session 的运行数；
+- `startup_check_failed`、`task_process_failed`、`session_collection_failure` 等脱敏失败分类。
+
+`startup_check_failed` 表示 DSH 或插件 activation 在付费任务前失败，该任务不会继续执行；`task_process_failed` 表示启动成功，但付费任务进程未成功完成。因此 `usage.runsWithUsage` 可能小于 `usage.runs`；只要存在缺失的 usage 证据，`cost.complete` 就是 `false`，此时成本估算不能当作本次运行的完整费用。
+
 ## 仓库侧验证
 
 以下命令不需要模型 Key，用于验证提交到仓库的 workflow 契约：
@@ -50,4 +64,4 @@ pnpm lint
 pnpm typecheck
 ```
 
-这些命令只能验证仓库文件，不能证明远端 Environment、reviewer 规则、Variable 或 Secret 已配置；首次触发前必须在 GitHub 设置页单独复核。
+这些命令只能验证仓库文件和不调用模型的启动审计契约，不能证明远端 Environment、reviewer 规则、Variable、Secret 或付费 provider 任务正常；首次触发前必须在 GitHub 设置页单独复核，并在运行后单独检查产物结论。

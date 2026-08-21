@@ -65,6 +65,10 @@ The exposure gate requires a newly created file below `.toolshrink-spill/`. Crea
 
 ## Evidence boundary
 
-The generated `result.json` reports observed task success, exposure, token and latency measurements. It does not claim statistical significance or a causal result beyond this pinned environment. Raw session logs, tool output, spill contents, absolute paths, and credentials remain local and are never published.
+The generated `result.json` reports observed startup checks, task-process outcomes, session collection, task success, exposure, token, and latency measurements. Startup is audited separately by fully booting a dedicated profile without its headless task runner, then shutting it down after the plugin tree loads. No task is submitted and no provider is called, so a later provider or task-process failure is not mislabeled as a plugin boot failure. The sanitized `execution.failureCategoryCounts` distinguishes startup, task-process, timeout, spawn, and session-collection failures without publishing raw logs.
+
+A successful command or green GitHub Actions workflow only proves that the evidence pipeline completed; use `result.decision.outcome` for the experiment conclusion. If `usage.runsWithUsage` is lower than `usage.runs`, `cost.complete` is `false` and the estimate is incomplete.
+
+The summary does not claim statistical significance or a causal result beyond this pinned environment. Raw session logs, startup output, task output, spill contents, absolute paths, and credentials remain local and are never published.
 
 The checked-in pricing snapshot uses the published peak rates as an upper-bound assumption. The generated cost estimate is not an invoice, and current provider pricing may differ.

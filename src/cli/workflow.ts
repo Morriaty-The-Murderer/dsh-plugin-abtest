@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
+import { createProfileStartupCommand } from '../adapters/dsh/command.js'
 import { freezeVariant } from '../artifacts/freeze.js'
 import { hashBytes, hashDirectory } from '../artifacts/hash.js'
 import { type CollectedRunEvidence, collectRunEvidence } from '../collect/collector.js'
@@ -19,6 +20,11 @@ import type {
   VariantId,
 } from '../domain/types.js'
 import { loadCases } from '../evaluate/cases.js'
+import {
+  lifecycleStatus,
+  missingSessionIsInfrastructureFailure,
+  shouldAttemptSessionCollection,
+} from '../evaluate/lifecycle.js'
 import { aggregatePairs, type Comparison, type PairMeasurement, type RunMeasurement } from '../evaluate/metrics.js'
 import { type EvaluatePairInput, evaluatePairEvidence } from '../evaluate/pipeline.js'
 import { detectExposure, validateRequiredExposure } from '../exposure/detectors.js'
@@ -31,7 +37,7 @@ import { writeExperimentReport } from '../report/write.js'
 import { createRuntimeFingerprint } from '../runtime/fingerprint.js'
 import { createRuntimeFixture } from '../runtime/fixture.js'
 import { createPairLayout } from '../runtime/layout.js'
-import { runPair } from '../runtime/runner.js'
+import { type ArmCommand, runPair } from '../runtime/runner.js'
 import { schedulePairs } from '../runtime/scheduler.js'
 
 export class ValidationFailure extends Error {}
@@ -68,9 +74,9 @@ process.stdout.write(behavior.output || '');
 
 const require = createRequire(import.meta.url)
 
-function dshCommand(manifest: ExperimentManifest, task: string): { executable: string; args: string[] } {
+function dshCommands(manifest: ExperimentManifest, task: string): { command: ArmCommand; startupCommand?: ArmCommand } {
   if (manifest.runtime.model.provider === 'mock') {
-    return { executable: process.execPath, args: ['-e', MOCK_RUNNER] }
+    return { command: { executable: process.execPath, args: ['-e', MOCK_RUNNER] } }
   }
   let packagePath: string
   try {
@@ -78,9 +84,13 @@ function dshCommand(manifest: ExperimentManifest, task: string): { executable: s
   } catch (error) {
     throw new ExecutionFailure('A non-mock experiment requires @deepseek-ai/dsh@0.1.0-rc.7', { cause: error })
   }
+  const dshExecutable = join(dirname(packagePath), 'lib', 'bin.js')
   return {
-    executable: process.execPath,
-    args: [join(dirname(packagePath), 'lib', 'bin.js'), '--profile', 'experiment', task],
+    command: {
+      executable: process.execPath,
+      args: [dshExecutable, '--profile', 'experiment', task],
+    },
+    startupCommand: createProfileStartupCommand(process.execPath, dshExecutable),
   }
 }
 
@@ -378,15 +388,20 @@ function measurement(
 ): PairMeasurement {
   function arm(run: Run, evidence: CollectedRunEvidence | undefined): RunMeasurement {
     const usage = run.evidence.tokenUsage
+    const lifecycle = lifecycleStatus(run)
     const toolNameCounts = new Map<string, number>()
     for (const call of evidence?.toolCalls ?? []) {
       toolNameCounts.set(call.name, (toolNameCounts.get(call.name) ?? 0) + 1)
     }
     return {
-      taskSuccess: run.assertions.every((assertion) => assertion.passed),
+      taskSuccess:
+        run.evidence.processExitCode === 0 &&
+        run.evidence.signal === null &&
+        run.assertions.length > 0 &&
+        run.assertions.every((assertion) => assertion.passed),
       assertionPassRate:
         run.assertions.length === 0
-          ? 1
+          ? 0
           : run.assertions.filter((assertion) => assertion.passed).length / run.assertions.length,
       durationMs: run.evidence.durationMs,
       startupMs: run.evidence.startupMs,
@@ -406,8 +421,8 @@ function measurement(
         evidence?.session.events.filter((event) => event.type === 'subagent/start' || event.type === 'delegate/start')
           .length ?? 0,
       verificationCommandPresent: run.assertions.some((assertion) => assertion.assertionId === 'command_test'),
-      bootSuccess: run.evidence.processExitCode === 0 && run.infrastructureError === undefined,
-      activationSuccess: run.exposure.state === 'activated' || run.exposure.state === 'exposed',
+      bootSuccess: lifecycle.bootSuccess,
+      activationSuccess: lifecycle.activationSuccess,
       criticalSecurityViolations: 0,
     }
   }
@@ -501,7 +516,7 @@ export async function runExperiment(
     if (!pairExists && measurementExists) {
       throw new ExecutionFailure(`Incomplete state: measurement exists without pair evidence for ${scheduled.id}`)
     }
-    const command = dshCommand(manifest, caseDef.task)
+    const commands = dshCommands(manifest, caseDef.task)
     const pair = pairExists
       ? await readJson<RunPair>(layout.pairFile)
       : await runPair({
@@ -522,13 +537,15 @@ export async function runExperiment(
             control: {
               artifact: artifacts.control,
               fingerprint: fingerprint(manifest, artifacts.control, fixture, pluginConfigs.control.value),
-              command,
+              command: commands.command,
+              ...(commands.startupCommand === undefined ? {} : { startupCommand: commands.startupCommand }),
               pluginConfig: pluginConfigs.control.value,
             },
             candidate: {
               artifact: artifacts.candidate,
               fingerprint: fingerprint(manifest, artifacts.candidate, fixture, pluginConfigs.candidate.value),
-              command,
+              command: commands.command,
+              ...(commands.startupCommand === undefined ? {} : { startupCommand: commands.startupCommand }),
               pluginConfig: pluginConfigs.candidate.value,
             },
           },
@@ -537,6 +554,10 @@ export async function runExperiment(
     for (const variant of ['control', 'candidate'] as const) {
       const armLayout = layout[variant]
       const run = pair[variant]
+      if (!shouldAttemptSessionCollection(run)) {
+        run.exposure = { state: 'unknown', detectors: [] }
+        continue
+      }
       try {
         collected[variant] = await collectRunEvidence({
           sessionRoot: armLayout.sessionRoot,
@@ -546,6 +567,7 @@ export async function runExperiment(
           signal: run.evidence.signal,
           durationMs: run.evidence.durationMs,
           startupMs: run.evidence.startupMs,
+          ...(run.evidence.startupCheck === undefined ? {} : { startupCheck: run.evidence.startupCheck }),
           ...(run.evidence.workspaceDiffPath === undefined
             ? {}
             : { workspaceDiffPath: run.evidence.workspaceDiffPath }),
@@ -562,7 +584,7 @@ export async function runExperiment(
         )
       } catch (error) {
         run.exposure = { state: 'unknown', detectors: [] }
-        if (run.infrastructureError === undefined) {
+        if (missingSessionIsInfrastructureFailure(run)) {
           run.infrastructureError = {
             code: 'session_collection_failure',
             message: `Session evidence could not be collected: ${(error as Error).message}`,
@@ -595,7 +617,13 @@ export async function runExperiment(
     })
     let invalidReason: PairMeasurement['invalidReason']
     if (!pair.integrity.valid) invalidReason = 'pair_integrity_failure'
-    else if (pair.control.infrastructureError !== undefined || pair.candidate.infrastructureError !== undefined)
+    else if (
+      pair.control.infrastructureError !== undefined ||
+      pair.candidate.infrastructureError !== undefined ||
+      pair.control.evidence.startupCheck?.success === false ||
+      pair.control.evidence.processExitCode !== 0 ||
+      pair.control.evidence.signal !== null
+    )
       invalidReason = 'infrastructure_error'
     else if (
       pair.control.evidence.processExitCode === 0 &&

@@ -59,6 +59,63 @@ interface UsageSummary {
   cacheWrite: number
 }
 
+type FailureCategory =
+  | 'startup_check_failed'
+  | 'task_process_failed'
+  | 'process_timeout'
+  | 'process_spawn_failure'
+  | 'session_collection_failure'
+  | 'other_infrastructure_failure'
+
+interface ExecutionSummary {
+  runCount: number
+  startupCheckedRunCount: number
+  startupPassedRunCount: number
+  taskExitSuccessCount: number
+  taskExitFailureCount: number
+  taskNotRunCount: number
+  sessionCollectedRunCount: number
+  failureCategoryCounts: Partial<Record<FailureCategory, number>>
+}
+
+function failureCategory(run: Run): FailureCategory | undefined {
+  if (run.evidence.startupCheck?.success === false) return 'startup_check_failed'
+  if (run.infrastructureError !== undefined) {
+    switch (run.infrastructureError.code) {
+      case 'process_timeout':
+      case 'process_spawn_failure':
+      case 'session_collection_failure':
+        return run.infrastructureError.code
+      default:
+        return 'other_infrastructure_failure'
+    }
+  }
+  return run.evidence.processExitCode === 0 && run.evidence.signal === null ? undefined : 'task_process_failed'
+}
+
+function summarizeExecution(runs: readonly Run[]): ExecutionSummary {
+  const failureCategoryCounts: ExecutionSummary['failureCategoryCounts'] = {}
+  for (const run of runs) {
+    const category = failureCategory(run)
+    if (category !== undefined) failureCategoryCounts[category] = (failureCategoryCounts[category] ?? 0) + 1
+  }
+  return {
+    runCount: runs.length,
+    startupCheckedRunCount: runs.filter((run) => run.evidence.startupCheck !== undefined).length,
+    startupPassedRunCount: runs.filter((run) => run.evidence.startupCheck?.success === true).length,
+    taskExitSuccessCount: runs.filter((run) => run.evidence.processExitCode === 0 && run.evidence.signal === null)
+      .length,
+    taskExitFailureCount: runs.filter(
+      (run) =>
+        run.evidence.startupCheck?.success !== false &&
+        (run.evidence.processExitCode !== 0 || run.evidence.signal !== null),
+    ).length,
+    taskNotRunCount: runs.filter((run) => run.evidence.startupCheck?.success === false).length,
+    sessionCollectedRunCount: runs.filter((run) => run.evidence.sessionCollected === true).length,
+    failureCategoryCounts,
+  }
+}
+
 function summarizeUsage(runs: readonly Run[]): UsageSummary {
   const summary: UsageSummary = {
     runs: 0,
@@ -139,6 +196,10 @@ export function createCaseStudySummary(input: CaseStudySummaryInput) {
       decision: input.decision,
       taskSuccessLift: input.comparison.quality.taskSuccessLift,
       guardrails: input.comparison.guardrails,
+    },
+    execution: {
+      control: summarizeExecution(runs.control),
+      candidate: summarizeExecution(runs.candidate),
     },
     usage,
     cost: {
