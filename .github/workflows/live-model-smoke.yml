@@ -1,0 +1,92 @@
+name: Protected live-model smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_paid_run:
+        description: 确认本次运行会调用付费模型
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-model-smoke
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 确认运行边界
+        env:
+          PAID_RUN_CONFIRMED: ${{ inputs.confirm_paid_run }}
+          DISPATCHED_REF: ${{ github.ref }}
+          DISPATCHED_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          test "$PAID_RUN_CONFIRMED" = "true"
+          test "$DISPATCHED_REF_TYPE" = "branch"
+          test "$DISPATCHED_REF" = "refs/heads/master"
+
+  live-smoke:
+    needs: authorize
+    environment: live-model
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.19.0
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.19.0'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 运行真实模型案例并生成脱敏摘要
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          LIVE_MODEL_CI_PROTECTED: ${{ vars.LIVE_MODEL_CI_PROTECTED }}
+        run: |
+          set -euo pipefail
+          test "$LIVE_MODEL_CI_PROTECTED" = "true"
+          test -n "$DEEPSEEK_API_KEY"
+
+          LIVE_MANIFEST="case-studies/toolshrink-context-budget/experiment.yml"
+          LIVE_EVIDENCE_ROOT="$(mktemp -d)"
+          LIVE_SUMMARY_PATH="$RUNNER_TEMP/live-model-summary/result.json"
+          mkdir -p "$(dirname "$LIVE_SUMMARY_PATH")"
+          trap 'rm -rf "$LIVE_EVIDENCE_ROOT"' EXIT
+
+          node --import tsx src/cli/bin.ts validate --manifest "$LIVE_MANIFEST" --output "$LIVE_EVIDENCE_ROOT" --json
+          node --import tsx src/cli/bin.ts freeze --manifest "$LIVE_MANIFEST" --output "$LIVE_EVIDENCE_ROOT" --json
+          node --import tsx src/cli/bin.ts run --manifest "$LIVE_MANIFEST" --output "$LIVE_EVIDENCE_ROOT" --json
+
+          set +e
+          node --import tsx src/cli/bin.ts decision --manifest "$LIVE_MANIFEST" --output "$LIVE_EVIDENCE_ROOT" --json
+          DECISION_EXIT=$?
+          set -e
+          case "$DECISION_EXIT" in
+            0|4|5) ;;
+            *) exit "$DECISION_EXIT" ;;
+          esac
+
+          node --import tsx src/cli/bin.ts report --manifest "$LIVE_MANIFEST" --output "$LIVE_EVIDENCE_ROOT" --json
+          pnpm case-study:summarize --manifest "$LIVE_MANIFEST" --evidence "$LIVE_EVIDENCE_ROOT" --output "$LIVE_SUMMARY_PATH"
+          node -e '
+            const fs = require("node:fs")
+            const summary = fs.readFileSync(process.argv[1], "utf8")
+            const secret = process.env.DEEPSEEK_API_KEY || ""
+            if (secret !== "" && summary.includes(secret)) process.exit(1)
+          ' "$LIVE_SUMMARY_PATH"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: live-model-summary
+          path: ${{ runner.temp }}/live-model-summary/result.json
+          if-no-files-found: error
+          retention-days: 7
