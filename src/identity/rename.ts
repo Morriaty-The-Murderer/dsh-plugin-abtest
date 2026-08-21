@@ -7,7 +7,7 @@ import { type StaleOccurrence, scanStaleIdentity } from './stale-scan.js'
 import { renderGeneratedIdentity, renderPackageIdentity } from './sync.js'
 
 const editableRoots = ['docs', '.github', 'examples', 'fixtures']
-const editableTopLevel = ['README.md', 'LICENSE', 'cordis.patch.yml']
+const editableTopLevel = ['README.md', 'README.zh-CN.md', 'LICENSE', 'cordis.patch.yml']
 const editableExtensions = new Set(['.md', '.yaml', '.yml'])
 
 export interface RenameVerification {

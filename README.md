@@ -1,18 +1,28 @@
+<p align="center">
+  <img src="./assets/social-preview.jpg" alt="DSH Plugin A/B Test — paired experiments, auditable evidence, safer promotion" width="100%">
+</p>
+
+<p align="center">
+  <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a>
+</p>
+
 # DSH Plugin A/B Test
 
-> 在发布 DSH 插件改动前，先用同一组任务验证它是否真的更好。
+> Test a DSH plugin change on the same tasks before you ship it.
 
-DSH Plugin A/B Test 会把当前版本（Control）和候选版本（Candidate）放进彼此隔离的 DSH 环境，逐题配对运行，再生成可复核的证据与发布建议。它适合回答三个很实际的问题：
+DSH Plugin A/B Test runs your current plugin (Control) and proposed change (Candidate) in isolated DSH environments, pairs their results case by case, and produces evidence you can review before release.
 
-- 新版本是否提高了任务成功率？
-- 提升是否伴随明显的 token、延迟或工具错误回退？
-- 结果能否由其他人用同一批输入重新跑出来？
+It helps answer three practical questions:
 
-最终结果只有四种：`PROMOTE`、`REVIEW`、`REJECT`、`INCONCLUSIVE`。其中 `PROMOTE` 也只是一项离线建议；本项目不会修改真实 DSH profile，也不会替你执行发布。
+- Did the Candidate improve task success?
+- Did that improvement come with a meaningful regression in tokens, latency, or tool errors?
+- Can someone else reproduce the result from the same inputs?
 
-## 先看结果
+Every experiment ends with one of four deterministic outcomes: `PROMOTE`, `REVIEW`, `REJECT`, or `INCONCLUSIVE`. Even `PROMOTE` is an offline recommendation only—this project never changes your real DSH profile or publishes a plugin for you.
 
-下面是本仓库离线样例的一次真实输出（省略无关字段）：
+## See the decision first
+
+This is a real result from the repository's offline example, with unrelated fields omitted:
 
 ```json
 {
@@ -23,11 +33,11 @@ DSH Plugin A/B Test 会把当前版本（Control）和候选版本（Candidate�
 }
 ```
 
-除了这条结论，你还会得到每次运行的 session 证据、断言结果、配对差值，以及 JSON、Markdown、HTML 三种报告。结论不靠模型拍板，而是由 manifest 中的确定性规则计算。
+Alongside the decision, you get raw session evidence, assertion results, pair-level deltas, and reports in JSON, Markdown, and HTML. The model does not choose the outcome; deterministic rules from the experiment manifest do.
 
-## 快速开始
+## Quick start
 
-当前 MVP 从源码运行，要求 Node.js `^22.19.0 || >=24.0.0` 和 pnpm `11.19.0`。初始化样例使用离线 scripted provider，不需要模型 API key。
+The current MVP runs from source and requires Node.js `^22.19.0 || >=24.0.0` and pnpm `11.19.0`. The starter experiment uses an offline scripted provider, so no model API key is required.
 
 ```bash
 pnpm install --frozen-lockfile
@@ -39,30 +49,30 @@ node --import tsx src/cli/bin.ts decision --manifest ./my-experiment/experiment.
 node --import tsx src/cli/bin.ts report --manifest ./my-experiment/experiment.yml --output ./evidence --json
 ```
 
-打开 `./evidence/<experiment-id>/report.html` 即可查看静态报告。要测试自己的插件，只需修改初始化目录里的 `experiment.yml`、`evals/cases.yml` 和两个 variant 配置。
+Open `./evidence/<experiment-id>/report.html` to view the static report. To test your own plugin, edit `experiment.yml`, `evals/cases.yml`, and the two variant configurations created by `init`.
 
-## 怎么判断
+## Understand the outcome
 
-| 结果 | 含义 | 常见下一步 |
+| Outcome | What it means | Typical next step |
 | --- | --- | --- |
-| `PROMOTE` | 证据充分、质量达到目标且 guardrail 通过 | 进入人工发布流程 |
-| `REVIEW` | 有改善，但成本、延迟、错误率或波动需要判断 | 阅读 pair 证据后人工复核 |
-| `REJECT` | hard gate 失败、关键用例回退或收益不足 | 修复 Candidate 后重跑 |
-| `INCONCLUSIVE` | 有效样本不足、插件暴露未证实或运行环境不可比 | 补齐证据，不把它当作失败 |
+| `PROMOTE` | Evidence is sufficient, quality meets the target, and guardrails pass | Continue through your human release process |
+| `REVIEW` | Results improved, but cost, latency, error rate, or variance needs judgment | Review the pair-level evidence |
+| `REJECT` | A hard gate failed, a critical case regressed, or the gain was too small | Fix the Candidate and rerun |
+| `INCONCLUSIVE` | There were too few valid pairs, exposure was not proven, or environments were not comparable | Complete the evidence instead of treating it as a failure |
 
-默认比较任务成功率，并可约束 token、P95 延迟和工具错误率。阈值、最小有效 pair 数、重复次数与并发数都写在 manifest 中；详细字段见 [manifest 文档](docs/manifest.md)，规则优先级见 [决策文档](docs/decisions.md)。
+Task success is the default primary metric. You can also guard token usage, P95 latency, and tool error rate. Thresholds, minimum valid pairs, repetitions, and concurrency all live in the manifest. See the [manifest reference](docs/manifest.md) and [decision rules](docs/decisions.md) for details.
 
-## 为什么结果可信
+## Why the evidence is trustworthy
 
-- **同题配对**：Control 与 Candidate 使用相同 case、workspace fixture 和模型参数。
-- **顺序平衡**：运行顺序按 pair 交替，减少固定先后顺序带来的偏差。
-- **环境隔离**：每个 arm 拥有独立的 `DSH_HOME`、profile、workspace、session root 和冻结插件制品。
-- **制品可追溯**：支持本地目录、tarball、精确 npm 版本和固定 GitHub commit；运行前会再次校验制品哈希。
-- **暴露可证明**：从 session 事件、工具调用或插件 receipt 判断目标插件是否真正参与了运行。
-- **盲评不泄露身份**：可选 comparator 只看到匿名的 A/B 输出，映射在比较完成后才揭示。
-- **失败不伪装成回退**：provider outage、损坏会话、环境差异等基础设施问题进入无效证据或 `INCONCLUSIVE`。
+- **Paired tasks:** Control and Candidate receive the same case, workspace fixture, and model parameters.
+- **Balanced order:** Pair order alternates to reduce fixed first-run bias.
+- **Isolated environments:** Each arm gets its own `DSH_HOME`, profile, workspace, session root, and frozen plugin artifact.
+- **Traceable artifacts:** Sources may be a local directory, tarball, exact npm version, or pinned GitHub commit; hashes are checked again before execution.
+- **Proven exposure:** Session events, tool calls, or plugin receipts show whether the target plugin actually participated.
+- **Blind comparison:** An optional comparator sees anonymous A/B outputs; identity is revealed only after comparison.
+- **Honest infrastructure failures:** Provider outages, corrupted sessions, and environment mismatches become invalid evidence or `INCONCLUSIVE`, not fake Candidate regressions.
 
-证据默认写入：
+Evidence is stored under one experiment directory:
 
 ```text
 <output>/<experiment-id>/
@@ -80,17 +90,19 @@ node --import tsx src/cli/bin.ts report --manifest ./my-experiment/experiment.ym
 └── report.html
 ```
 
-已完成的 pair 会被后续 `run` 复用；部分状态不会被静默覆盖。输入变化或证据受损时，应使用新的 output root。
+Completed pairs are reused by later `run` commands, and partial state is never silently overwritten. If inputs change or evidence is damaged, use a new output root.
 
-## 接入真实 DSH
+## Connect to real DSH
 
-非 `mock` provider 会调用精确固定的 `@deepseek-ai/dsh@0.1.0-rc.7`。模型凭证等环境变量必须按名称加入 `extensions.environment_allowlist`；fingerprint 和制品元数据只记录 allowlist 哈希，不记录原始值。插件与测试命令的 stdout、stderr 和 session log 会作为原始证据保存，因此接入方仍应避免主动输出 secret。
+Non-`mock` providers invoke the exact pinned version `@deepseek-ai/dsh@0.1.0-rc.7`. Add model credentials and other environment variables by name to `extensions.environment_allowlist`. Fingerprints and artifact metadata store only the allowlist hash, never the original values.
 
-CLI 是可信的本地自动化边界，可运行 manifest 中显式声明的测试命令。可选 DSH/Cordis 工具入口面向模型调用，因此会拒绝包含 `command_test` 的实验，避免把模型工具变成任意命令执行入口。
+Plugin and test-command stdout, stderr, and session logs are retained as raw evidence, so integrations must still avoid printing secrets.
 
-完整 CLI 包含 `init`、`validate`、`freeze`、`run`、`status`、`compare`、`decision` 和 `report`。稳定退出码及真实模型 smoke 的运行方法见 [验收记录](docs/verification.md)。
+The CLI is a trusted local automation boundary and may run commands explicitly declared in the manifest. Optional DSH/Cordis tool entry points are model-facing, so they reject experiments containing `command_test` rather than becoming arbitrary command-execution tools.
 
-## 开发与验证
+The complete CLI includes `init`, `validate`, `freeze`, `run`, `status`, `compare`, `decision`, and `report`. Stable exit codes and the live-model smoke procedure are documented in the [verification record](docs/verification.md).
+
+## Development
 
 ```bash
 pnpm identity:check
@@ -103,6 +115,6 @@ pnpm build
 pnpm pack --dry-run
 ```
 
-项目仍处于 MVP 阶段，当前不发布 npm 包。架构、上游契约与安全边界分别见 [架构说明](docs/architecture.md) 和 [上游审计](docs/upstream.md)。
+This project is currently an MVP and is not published as an npm package. See the [architecture](docs/architecture.md) and [upstream audit](docs/upstream.md) for implementation and security boundaries.
 
-公开名称、npm 包名和 CLI 名称由 `project.identity.json` 统一管理，并有实质 rename 测试防止旧身份残留；详见 [身份文档](docs/identity.md)。稳定协议标识不会随品牌改名。
+Public names, the npm package name, and the CLI name are managed from `project.identity.json`. A real rename test prevents stale public identity from surviving a rename; see the [identity guide](docs/identity.md). Stable protocol identifiers do not change with the project brand.
