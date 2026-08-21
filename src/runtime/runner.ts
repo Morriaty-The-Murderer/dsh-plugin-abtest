@@ -1,10 +1,10 @@
 import { cp, mkdir, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { prepareIsolatedProfile } from '../adapters/dsh/profile.js'
+import { prepareIsolatedProfile, prepareIsolatedStartupProfile } from '../adapters/dsh/profile.js'
 import type { FrozenArtifact, Run, RunPair, RuntimeFingerprint, RuntimeFixture, VariantId } from '../domain/types.js'
 import { compareFingerprints } from './integrity.js'
 import { type ArmLayout, createPairLayout } from './layout.js'
-import { executeChildProcess } from './process.js'
+import { type ChildProcessResult, executeChildProcess } from './process.js'
 import type { ScheduledPair } from './scheduler.js'
 import { snapshotWorkspace, writeWorkspaceDiff } from './workspace-diff.js'
 
@@ -17,6 +17,7 @@ export interface RunnerArm {
   artifact: FrozenArtifact
   fingerprint: RuntimeFingerprint
   command: ArmCommand
+  startupCommand?: ArmCommand
   pluginConfig?: unknown
 }
 
@@ -54,6 +55,15 @@ async function prepareArm(
   await mkdir(layout.root, { recursive: true })
   await Promise.all([
     cp(fixture.workspacePath, layout.workspace, { recursive: true, force: false, errorOnExist: true }),
+    ...(arm.startupCommand === undefined
+      ? []
+      : [
+          cp(fixture.workspacePath, layout.startupWorkspace, {
+            recursive: true,
+            force: false,
+            errorOnExist: true,
+          }),
+        ]),
     cp(arm.artifact.materializedPath, layout.artifact, { recursive: true, force: false, errorOnExist: true }),
     mkdir(layout.sessionRoot, { recursive: true }),
   ])
@@ -62,6 +72,12 @@ async function prepareArm(
     ...(arm.pluginConfig === undefined ? {} : { pluginConfig: arm.pluginConfig }),
     ...(model === undefined ? {} : { model }),
   })
+  if (arm.startupCommand !== undefined) {
+    await prepareIsolatedStartupProfile(layout, arm.artifact, {
+      targetPlugin,
+      ...(arm.pluginConfig === undefined ? {} : { pluginConfig: arm.pluginConfig }),
+    })
+  }
 }
 
 function armEnvironment(base: Record<string, string>, layout: ArmLayout, variant: VariantId): Record<string, string> {
@@ -76,21 +92,70 @@ function armEnvironment(base: Record<string, string>, layout: ArmLayout, variant
 }
 
 async function runArm(variant: VariantId, arm: RunnerArm, layout: ArmLayout, input: RunPairInput): Promise<Run> {
+  const startupResult =
+    arm.startupCommand === undefined
+      ? undefined
+      : await executeChildProcess({
+          executable: arm.startupCommand.executable,
+          args: arm.startupCommand.args,
+          cwd: layout.startupWorkspace,
+          environment: armEnvironment(
+            freezeRuntimeEnvironment(input.fixture.environmentAllowlist, input.environment),
+            layout,
+            variant,
+          ),
+          stdoutPath: layout.startupStdout,
+          stderrPath: layout.startupStderr,
+          timeoutMs: input.timeoutMs,
+          terminationGraceMs: input.terminationGraceMs,
+        })
+  const startupCheck =
+    startupResult === undefined
+      ? undefined
+      : {
+          stdoutPath: layout.startupStdout,
+          stderrPath: layout.startupStderr,
+          processExitCode: startupResult.exitCode,
+          signal: startupResult.signal,
+          durationMs: startupResult.durationMs,
+          startupMs: startupResult.startupMs,
+          success:
+            startupResult.exitCode === 0 &&
+            startupResult.signal === null &&
+            startupResult.infrastructureError === undefined,
+          ...(startupResult.infrastructureError === undefined
+            ? startupResult.exitCode === 0 && startupResult.signal === null
+              ? {}
+              : { failureCode: 'process_exit_nonzero' as const }
+            : { failureCode: startupResult.infrastructureError.code }),
+        }
   const workspaceBefore = await snapshotWorkspace(layout.workspace)
-  const result = await executeChildProcess({
-    executable: arm.command.executable,
-    args: arm.command.args,
-    cwd: layout.workspace,
-    environment: armEnvironment(
-      freezeRuntimeEnvironment(input.fixture.environmentAllowlist, input.environment),
-      layout,
-      variant,
-    ),
-    stdoutPath: layout.stdout,
-    stderrPath: layout.stderr,
-    timeoutMs: input.timeoutMs,
-    terminationGraceMs: input.terminationGraceMs,
-  })
+  let result: ChildProcessResult
+  if (startupCheck?.success === false) {
+    await Promise.all([writeFile(layout.stdout, ''), writeFile(layout.stderr, '')])
+    result = {
+      exitCode: null,
+      signal: null,
+      durationMs: 0,
+      startupMs: 0,
+      timedOut: false,
+    }
+  } else {
+    result = await executeChildProcess({
+      executable: arm.command.executable,
+      args: arm.command.args,
+      cwd: layout.workspace,
+      environment: armEnvironment(
+        freezeRuntimeEnvironment(input.fixture.environmentAllowlist, input.environment),
+        layout,
+        variant,
+      ),
+      stdoutPath: layout.stdout,
+      stderrPath: layout.stderr,
+      timeoutMs: input.timeoutMs,
+      terminationGraceMs: input.terminationGraceMs,
+    })
+  }
   const workspaceDiffPath = join(layout.root, 'workspace-diff.json')
   await writeWorkspaceDiff(workspaceDiffPath, workspaceBefore, await snapshotWorkspace(layout.workspace))
   const run: Run = {
@@ -108,6 +173,7 @@ async function runArm(variant: VariantId, arm: RunnerArm, layout: ArmLayout, inp
       signal: result.signal,
       durationMs: result.durationMs,
       startupMs: result.startupMs,
+      ...(startupCheck === undefined ? {} : { startupCheck }),
     },
     exposure: { state: 'unknown', detectors: [] },
     assertions: [],

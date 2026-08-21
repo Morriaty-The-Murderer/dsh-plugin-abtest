@@ -19,6 +19,12 @@ export interface IsolatedProfileOptions {
   model?: { provider: string; name: string; parameters?: Readonly<Record<string, unknown>> }
 }
 
+interface ProfileMode {
+  path: string
+  includeHeadless: boolean
+  includeModel: boolean
+}
+
 function modelPatch(model: NonNullable<IsolatedProfileOptions['model']>): unknown[] {
   const parameters = model.parameters ?? {}
   const openAiCompatiblePatch =
@@ -54,34 +60,35 @@ function modelPatch(model: NonNullable<IsolatedProfileOptions['model']>): unknow
   ]
 }
 
-export async function prepareIsolatedProfile(
+async function prepareProfile(
   layout: ArmLayout,
   artifact: FrozenArtifact,
   options: IsolatedProfileOptions,
+  mode: ProfileMode,
 ): Promise<void> {
-  await mkdir(layout.profile, { recursive: true })
+  await mkdir(mode.path, { recursive: true })
   const manifest = {
-    name: 'dsh-profile-plugin-experiment',
+    name: mode.includeHeadless ? 'dsh-profile-plugin-experiment' : 'dsh-profile-plugin-startup-audit',
     private: true,
-    dependencies: { [artifact.packageName]: dependencyPath(layout.profile, layout.artifact) },
+    dependencies: { [artifact.packageName]: dependencyPath(mode.path, layout.artifact) },
     dsh: {
       profile: {
         bundles: [
           '@deepseek-ai/dsh-base',
-          '@deepseek-ai/dsh-headless',
+          ...(mode.includeHeadless ? ['@deepseek-ai/dsh-headless'] : []),
           ...(artifact.usesDshBundle === true ? [artifact.packageName] : []),
         ],
       },
     },
   }
   await Promise.all([
-    writeFile(join(layout.profile, 'package.json'), `${JSON.stringify(manifest, undefined, 2)}\n`),
-    writeFile(join(layout.profile, 'cordis.yml'), '[]\n'),
+    writeFile(join(mode.path, 'package.json'), `${JSON.stringify(manifest, undefined, 2)}\n`),
+    writeFile(join(mode.path, 'cordis.yml'), '[]\n'),
     writeFile(
-      join(layout.profile, 'cordis.patch.yml'),
+      join(mode.path, 'cordis.patch.yml'),
       stringify([
         { id: 'session-persistence-jsonl', config: { root: layout.sessionRoot } },
-        ...(options.model === undefined ? [] : modelPatch(options.model)),
+        ...(mode.includeModel && options.model !== undefined ? modelPatch(options.model) : []),
         artifact.usesDshBundle === true
           ? { id: options.targetPlugin, config: options.pluginConfig ?? {} }
           : {
@@ -90,11 +97,35 @@ export async function prepareIsolatedProfile(
       ]),
     ),
     writeFile(
-      join(layout.profile, 'pnpm-workspace.yaml'),
+      join(mode.path, 'pnpm-workspace.yaml'),
       'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n',
     ),
   ])
-  const targetModulePath = modulePath(layout.profile, artifact.packageName)
+  const targetModulePath = modulePath(mode.path, artifact.packageName)
   await mkdir(dirname(targetModulePath), { recursive: true })
   await symlink(layout.artifact, targetModulePath, 'dir')
+}
+
+export async function prepareIsolatedProfile(
+  layout: ArmLayout,
+  artifact: FrozenArtifact,
+  options: IsolatedProfileOptions,
+): Promise<void> {
+  await prepareProfile(layout, artifact, options, {
+    path: layout.profile,
+    includeHeadless: true,
+    includeModel: true,
+  })
+}
+
+export async function prepareIsolatedStartupProfile(
+  layout: ArmLayout,
+  artifact: FrozenArtifact,
+  options: IsolatedProfileOptions,
+): Promise<void> {
+  await prepareProfile(layout, artifact, options, {
+    path: layout.startupProfile,
+    includeHeadless: false,
+    includeModel: false,
+  })
 }

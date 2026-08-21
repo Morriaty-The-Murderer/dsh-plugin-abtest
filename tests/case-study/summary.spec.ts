@@ -21,7 +21,11 @@ function artifact(configHash: string): FrozenArtifact {
   }
 }
 
-function run(variant: 'control' | 'candidate', usage: NonNullable<Run['evidence']['tokenUsage']>): Run {
+function run(
+  variant: 'control' | 'candidate',
+  usage: NonNullable<Run['evidence']['tokenUsage']>,
+  processExitCode = 0,
+): Run {
   return {
     id: `case-0-${variant}`,
     variant,
@@ -31,10 +35,21 @@ function run(variant: 'control' | 'candidate', usage: NonNullable<Run['evidence'
     evidence: {
       stdoutPath: '/private/raw/stdout.log',
       stderrPath: '/private/raw/stderr.log',
-      processExitCode: 0,
+      sessionLogPath: '/private/raw/session.jsonl',
+      sessionCollected: true,
+      processExitCode,
       signal: null,
       durationMs: 100,
       startupMs: 10,
+      startupCheck: {
+        stdoutPath: '/private/raw/startup.stdout.log',
+        stderrPath: '/private/raw/startup.stderr.log',
+        processExitCode: 0,
+        signal: null,
+        durationMs: 20,
+        startupMs: 5,
+        success: true,
+      },
       tokenUsage: usage,
     },
     exposure: { state: 'exposed', detectors: [] },
@@ -51,7 +66,7 @@ describe('真实案例脱敏摘要', () => {
         repetition: 0,
         order: ['control', 'candidate'],
         control: run('control', { input: 100, output: 10, reasoning: 3, cacheRead: 20, cacheWrite: 1 }),
-        candidate: run('candidate', { input: 60, output: 8, reasoning: 2, cacheRead: 20, cacheWrite: 0 }),
+        candidate: run('candidate', { input: 60, output: 8, reasoning: 2, cacheRead: 20, cacheWrite: 0 }, 9),
         integrity: { valid: true },
       },
     ]
@@ -102,6 +117,26 @@ describe('真实案例脱敏摘要', () => {
     expect(summary.cost.control.estimatedUsd).toBeCloseTo(0.00005748, 12)
     expect(summary.cost.candidate.estimatedUsd).toBeCloseTo(0.00003724, 12)
     expect(summary.cost.complete).toBe(false)
+    expect(summary.execution.control).toEqual({
+      runCount: 1,
+      startupCheckedRunCount: 1,
+      startupPassedRunCount: 1,
+      taskExitSuccessCount: 1,
+      taskExitFailureCount: 0,
+      taskNotRunCount: 0,
+      sessionCollectedRunCount: 1,
+      failureCategoryCounts: {},
+    })
+    expect(summary.execution.candidate).toMatchObject({
+      runCount: 1,
+      startupCheckedRunCount: 1,
+      startupPassedRunCount: 1,
+      taskExitSuccessCount: 0,
+      taskExitFailureCount: 1,
+      taskNotRunCount: 0,
+      sessionCollectedRunCount: 1,
+      failureCategoryCounts: { task_process_failed: 1 },
+    })
     expect(JSON.stringify(summary)).not.toContain('/private/raw')
     expect(() => assertSanitizedCaseStudySummary(summary, ['secret-value'])).not.toThrow()
   })

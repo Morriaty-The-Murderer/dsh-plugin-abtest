@@ -74,12 +74,23 @@ export interface RunEvidence {
   stdoutPath: string
   stderrPath: string
   sessionLogPath?: string
+  sessionCollected?: boolean
   finalOutputPath?: string
   workspaceDiffPath?: string
   processExitCode: number | null
   signal: NodeJS.Signals | null
   durationMs: number
   startupMs: number
+  startupCheck?: {
+    stdoutPath: string
+    stderrPath: string
+    processExitCode: number | null
+    signal: NodeJS.Signals | null
+    durationMs: number
+    startupMs: number
+    success: boolean
+    failureCode?: 'process_timeout' | 'process_spawn_failure' | 'process_exit_nonzero'
+  }
   tokenUsage?: {
     input: number
     output: number

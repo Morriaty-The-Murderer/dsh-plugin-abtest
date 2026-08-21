@@ -65,6 +65,10 @@ pnpm case-study:summarize --manifest case-studies/toolshrink-context-budget/expe
 
 ## 证据边界
 
-生成的 `result.json` 只报告观测到的任务成功、暴露证明、token 和延迟，不声称统计显著，也不把固定环境内的结果外推成普遍因果结论。原始 session、工具输出、spill 内容、绝对路径和凭证只保留在本地，不发布。
+生成的 `result.json` 会报告观测到的启动检查、任务进程结果、session 采集、任务成功、暴露证明、token 和延迟。启动阶段会完整 boot 一个移除 headless 任务 runner 的专用 profile，在插件树加载完成后关闭；它不提交任务，也不调用 provider。因此后续 provider 或任务进程失败不会再被误写成插件启动失败。脱敏后的 `execution.failureCategoryCounts` 会区分启动、任务进程、超时、spawn 和 session 采集故障，但不发布原始日志。
+
+命令成功或 GitHub Actions 变绿，只说明证据流水线完整执行；实验结论必须看 `result.decision.outcome`。如果 `usage.runsWithUsage` 小于 `usage.runs`，则 `cost.complete=false`，成本估算并不完整。
+
+摘要不声称统计显著，也不把固定环境内的结果外推成普遍因果结论。原始 session、启动输出、任务输出、spill 内容、绝对路径和凭证只保留在本地，不发布。
 
 仓库内价格快照按公开峰值费率估算成本上限。生成的成本只是估算，不是账单；供应商当前价格可能已经变化。

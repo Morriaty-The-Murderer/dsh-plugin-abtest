@@ -7,11 +7,15 @@ export interface ArmLayout {
   root: string
   home: string
   profile: string
+  startupProfile: string
   workspace: string
+  startupWorkspace: string
   sessionRoot: string
   artifact: string
   stdout: string
   stderr: string
+  startupStdout: string
+  startupStderr: string
 }
 
 export interface PairLayout {
@@ -41,11 +45,15 @@ function armLayout(pairRoot: string, variant: VariantId): ArmLayout {
     root,
     home: join(root, 'home'),
     profile: join(root, 'home', 'profiles', 'experiment'),
+    startupProfile: join(root, 'home', 'profiles', 'experiment-startup'),
     workspace: join(root, 'workspace'),
+    startupWorkspace: join(root, 'startup-workspace'),
     sessionRoot: join(root, 'sessions'),
     artifact: join(root, 'artifact'),
     stdout: join(root, 'stdout.log'),
     stderr: join(root, 'stderr.log'),
+    startupStdout: join(root, 'startup.stdout.log'),
+    startupStderr: join(root, 'startup.stderr.log'),
   }
 }
 
