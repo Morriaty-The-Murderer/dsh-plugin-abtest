@@ -5,6 +5,7 @@ import type { Comparison } from '../../src/evaluate/metrics.js'
 
 const policy: PromotionPolicy = {
   minimumValidPairs: 6,
+  minimumUniqueCases: 2,
   minimumAbsoluteLift: 0.03,
   hardGates: {
     bootSuccess: true,
@@ -22,6 +23,8 @@ const policy: PromotionPolicy = {
 function comparison(overrides: Partial<Comparison> = {}): Comparison {
   return {
     validPairCount: 8,
+    validUniqueCaseCount: 4,
+    caseStability: { evaluableCaseCount: 4, unstableCaseCount: 0, status: 'stable' },
     invalidPairCount: 0,
     integrityFailureCount: 0,
     infrastructureFailureCount: 0,
@@ -31,6 +34,7 @@ function comparison(overrides: Partial<Comparison> = {}): Comparison {
       candidateTaskSuccessRate: 0.8,
       taskSuccessLift: 0.1,
       pairedOutcomes: { wins: 1, losses: 0, ties: 7 },
+      blindOutcomes: { candidateWins: 0, controlWins: 0, ties: 0, evaluatedPairs: 0 },
       blindWinRate: null,
       criticalCaseRegressions: 0,
       candidateCriticalSecurityViolations: 0,
@@ -79,10 +83,36 @@ describe('four-state promotion decision', () => {
     expect(decision.triggeredRules).toContain('review.high_variance')
   })
 
+  it('有正向收益但 case repetition 不稳定时 REVIEW', () => {
+    const decision = decidePromotion(
+      comparison({ caseStability: { evaluableCaseCount: 1, unstableCaseCount: 1, status: 'unstable' } }),
+      policy,
+    )
+
+    expect(decision.outcome).toBe('REVIEW')
+    expect(decision.triggeredRules).toContain('review.case_instability')
+  })
+
   it('有效证据不足、暴露不足或完整性失败时 INCONCLUSIVE', () => {
     expect(decidePromotion(comparison({ validPairCount: 5 }), policy).outcome).toBe('INCONCLUSIVE')
     expect(decidePromotion(comparison({ exposureInsufficientCount: 1 }), policy).outcome).toBe('INCONCLUSIVE')
     expect(decidePromotion(comparison({ integrityFailureCount: 1 }), policy).outcome).toBe('INCONCLUSIVE')
+  })
+
+  it('同一 case 的多次 repetition 不能满足 unique-case 门槛', () => {
+    const decision = decidePromotion(comparison({ validPairCount: 8, validUniqueCaseCount: 1 }), policy)
+
+    expect(decision.outcome).toBe('INCONCLUSIVE')
+    expect(decision.triggeredRules).toContain('evidence.minimum_unique_cases')
+  })
+
+  it('旧 comparison 缺少 canonical case summary 时保持 INCONCLUSIVE', () => {
+    const current = comparison()
+    const { validUniqueCaseCount: _validUniqueCaseCount, caseStability: _caseStability, ...legacyComparison } = current
+    const decision = decidePromotion(legacyComparison as Comparison, policy)
+
+    expect(decision.outcome).toBe('INCONCLUSIVE')
+    expect(decision.triggeredRules).toContain('evidence.canonical_case_summary')
   })
 
   it('阈值等号算通过，零 baseline 的无限增长触发 REVIEW', () => {

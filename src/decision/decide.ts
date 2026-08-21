@@ -21,6 +21,18 @@ export function decidePromotion(comparison: Comparison, policy: PromotionPolicy)
   if (comparison.validPairCount < policy.minimumValidPairs) {
     sufficiency.push({ rule: 'evidence.minimum_valid_pairs', reason: 'Too few valid pairs' })
   }
+  const canonicalCaseSummaryAvailable =
+    Number.isSafeInteger(comparison.validUniqueCaseCount) &&
+    comparison.validUniqueCaseCount >= 0 &&
+    comparison.caseStability !== undefined
+  if (!canonicalCaseSummaryAvailable) {
+    sufficiency.push({
+      rule: 'evidence.canonical_case_summary',
+      reason: 'Canonical unique-case and stability evidence is missing',
+    })
+  } else if (comparison.validUniqueCaseCount < policy.minimumUniqueCases) {
+    sufficiency.push({ rule: 'evidence.minimum_unique_cases', reason: 'Too few unique valid cases' })
+  }
   if (comparison.integrityFailureCount > 0) {
     sufficiency.push({ rule: 'evidence.pair_integrity', reason: 'One or more pairs failed runtime integrity' })
   }
@@ -44,6 +56,9 @@ export function decidePromotion(comparison: Comparison, policy: PromotionPolicy)
     ...guardrails,
     ...(comparison.highVariance === true
       ? [{ rule: 'review.high_variance', reason: 'Observed variance requires human review' }]
+      : []),
+    ...(comparison.caseStability?.status === 'unstable'
+      ? [{ rule: 'review.case_instability', reason: 'Repeated outcomes conflict within one or more cases' }]
       : []),
   ]
   if (primaryPassed && reviewConcerns.length === 0) {

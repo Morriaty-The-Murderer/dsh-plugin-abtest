@@ -31,11 +31,14 @@ export function renderHtmlReport(result: ReportView): string {
   <h2>Evidence</h2>
   <table><tbody>
     ${row('Valid pairs', result.comparison.validPairCount)}
+    ${row('Valid unique cases', result.comparison.validUniqueCaseCount)}
     ${row('Invalid pairs', result.comparison.invalidPairCount)}
+    ${row('Case stability', `${result.comparison.caseStability.status} (${result.comparison.caseStability.unstableCaseCount} / ${result.comparison.caseStability.evaluableCaseCount} unstable)`)}
     ${row('Exposure verified', result.exposureSummary.exposed)}
     ${row('Exposure unknown', result.exposureSummary.unknown)}
     ${row('Task success lift', result.comparison.quality.taskSuccessLift)}
     ${row('Paired wins / losses / ties', result.comparison.quality.pairedOutcomes === undefined ? 'unavailable' : `${result.comparison.quality.pairedOutcomes.wins} / ${result.comparison.quality.pairedOutcomes.losses} / ${result.comparison.quality.pairedOutcomes.ties}`)}
+    ${row('Blind Candidate / Control / ties', `${result.comparison.quality.blindOutcomes.candidateWins} / ${result.comparison.quality.blindOutcomes.controlWins} / ${result.comparison.quality.blindOutcomes.ties}`)}
     ${row('Blind win rate', result.comparison.quality.blindWinRate ?? 'unavailable')}
     ${row('Critical case regressions', result.comparison.quality.criticalCaseRegressions)}
     ${row('Median token increase pct', result.comparison.guardrails.medianTokenIncreasePct ?? 'unavailable')}

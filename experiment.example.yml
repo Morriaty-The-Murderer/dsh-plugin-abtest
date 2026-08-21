@@ -39,6 +39,7 @@ execution:
 
 decision:
   minimum_valid_pairs: 6
+  minimum_unique_cases: 2
   hard_gates:
     boot_success: true
     activation_success: true

@@ -33,6 +33,31 @@ async function scenario(candidateFixture: string, timeoutMs?: number) {
 }
 
 describe('deterministic candidate fixtures', () => {
+  it('measurement 保留 case、repetition 与可选盲评结果', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'paired-measurement-identity-'))
+    roots.push(root)
+    const project = join(root, 'project')
+    const output = join(root, 'output')
+    const { manifest } = await initProject(project)
+    await freezeExperiment(manifest, output)
+
+    await runExperiment(manifest, output, {
+      comparator: async () => ({
+        anonymousWinner: 'tie',
+        reasoning: 'outputs are equivalent',
+        scores: { A: 3, B: 3 },
+      }),
+    })
+
+    const measurement = JSON.parse(
+      await readFile(
+        join(output, 'example-plugin-improvement', 'pairs', 'expected-output-0', 'measurement.json'),
+        'utf8',
+      ),
+    )
+    expect(measurement).toMatchObject({ caseId: 'expected-output', repetition: 0, blindWinner: 'tie' })
+  })
+
   it('Candidate V2 达到 PROMOTE', async () => {
     expect((await scenario('candidate-v2')).outcome).toBe('PROMOTE')
   })

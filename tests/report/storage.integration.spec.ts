@@ -41,8 +41,15 @@ describe('report storage contract', () => {
       pairs: [pair],
       comparison: {
         validPairCount: 1,
+        validUniqueCaseCount: 1,
         invalidPairCount: 0,
-        quality: { taskSuccessLift: 0.1, criticalCaseRegressions: 0 },
+        caseStability: { evaluableCaseCount: 0, unstableCaseCount: 0, status: 'not_evaluable' as const },
+        quality: {
+          taskSuccessLift: 0.1,
+          criticalCaseRegressions: 0,
+          blindOutcomes: { candidateWins: 0, controlWins: 0, ties: 0, evaluatedPairs: 0 },
+          blindWinRate: null,
+        },
         guardrails: { medianTokenIncreasePct: 0, p95LatencyIncreasePct: 0, toolErrorRateIncreasePp: 0 },
       },
       decision: { outcome: 'PROMOTE', reasons: ['passed'], triggeredRules: ['primary.superiority'] },
