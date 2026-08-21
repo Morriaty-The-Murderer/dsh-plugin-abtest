@@ -22,6 +22,9 @@ export interface RunMeasurement {
 
 export interface PairMeasurement {
   pairId: string
+  caseId: string
+  repetition: number
+  blindWinner?: 'control' | 'candidate' | 'tie'
   valid: boolean
   invalidReason?: 'pair_integrity_failure' | 'infrastructure_error' | 'required_exposure_missing' | 'other'
   criticalCase: boolean
@@ -58,8 +61,23 @@ export interface MetricStatistics {
   significance: 'not_claimed'
 }
 
+export interface CaseStability {
+  evaluableCaseCount: number
+  unstableCaseCount: number
+  status: 'not_evaluable' | 'stable' | 'unstable'
+}
+
+export interface BlindOutcomes {
+  candidateWins: number
+  controlWins: number
+  ties: number
+  evaluatedPairs: number
+}
+
 export interface Comparison {
   validPairCount: number
+  validUniqueCaseCount: number
+  caseStability: CaseStability
   invalidPairCount: number
   integrityFailureCount: number
   infrastructureFailureCount: number
@@ -69,6 +87,7 @@ export interface Comparison {
     candidateTaskSuccessRate: number
     taskSuccessLift: number
     pairedOutcomes: { wins: number; losses: number; ties: number }
+    blindOutcomes: BlindOutcomes
     blindWinRate: number | null
     criticalCaseRegressions: number
     candidateCriticalSecurityViolations: number
@@ -100,7 +119,39 @@ function rate(numerator: number, denominator: number): number | null {
 }
 
 export function aggregatePairs(pairs: readonly PairMeasurement[]): Comparison {
+  for (const pair of pairs) {
+    if (
+      typeof pair.caseId !== 'string' ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(pair.caseId) ||
+      !Number.isSafeInteger(pair.repetition) ||
+      pair.repetition < 0
+    ) {
+      throw new Error(`Invalid pair measurement identity: ${pair.pairId}`)
+    }
+  }
   const valid = pairs.filter((pair) => pair.valid)
+  const measurementsByCase = new Map<string, PairMeasurement[]>()
+  for (const pair of valid) {
+    const measurements = measurementsByCase.get(pair.caseId) ?? []
+    measurements.push(pair)
+    measurementsByCase.set(pair.caseId, measurements)
+  }
+  const evaluableCases = [...measurementsByCase.values()].filter(
+    (measurements) => new Set(measurements.map((measurement) => measurement.repetition)).size >= 2,
+  )
+  const unstableCaseCount = evaluableCases.filter(
+    (measurements) =>
+      new Set(
+        measurements.map(
+          (measurement) => Number(measurement.candidate.taskSuccess) - Number(measurement.control.taskSuccess),
+        ),
+      ).size > 1,
+  ).length
+  const caseStability: CaseStability = {
+    evaluableCaseCount: evaluableCases.length,
+    unstableCaseCount,
+    status: evaluableCases.length === 0 ? 'not_evaluable' : unstableCaseCount === 0 ? 'stable' : 'unstable',
+  }
   const deltas: PairDelta[] = valid.map((pair) => ({
     pairId: pair.pairId,
     taskSuccess: Number(pair.candidate.taskSuccess) - Number(pair.control.taskSuccess),
@@ -145,6 +196,12 @@ export function aggregatePairs(pairs: readonly PairMeasurement[]): Comparison {
     valid.reduce((sum, pair) => sum + pair.candidate.failedToolCalls, 0),
     candidateToolCalls,
   )
+  const blindOutcomes: BlindOutcomes = {
+    candidateWins: valid.filter((pair) => pair.blindWinner === 'candidate').length,
+    controlWins: valid.filter((pair) => pair.blindWinner === 'control').length,
+    ties: valid.filter((pair) => pair.blindWinner === 'tie').length,
+    evaluatedPairs: valid.filter((pair) => pair.blindWinner !== undefined).length,
+  }
   const taskDeltas = deltas.map((delta) => delta.taskSuccess)
   const statistic = (values: readonly number[]): MetricStatistics => ({
     count: values.length,
@@ -155,6 +212,8 @@ export function aggregatePairs(pairs: readonly PairMeasurement[]): Comparison {
   })
   return {
     validPairCount: valid.length,
+    validUniqueCaseCount: new Set(valid.map((pair) => pair.caseId)).size,
+    caseStability,
     invalidPairCount: pairs.length - valid.length,
     integrityFailureCount: pairs.filter((pair) => !pair.valid && pair.invalidReason === 'pair_integrity_failure')
       .length,
@@ -171,7 +230,8 @@ export function aggregatePairs(pairs: readonly PairMeasurement[]): Comparison {
         losses: taskDeltas.filter((delta) => delta < 0).length,
         ties: taskDeltas.filter((delta) => delta === 0).length,
       },
-      blindWinRate: null,
+      blindOutcomes,
+      blindWinRate: rate(blindOutcomes.candidateWins, blindOutcomes.candidateWins + blindOutcomes.controlWins),
       criticalCaseRegressions: valid.filter(
         (pair) => pair.criticalCase && pair.control.taskSuccess && !pair.candidate.taskSuccess,
       ).length,

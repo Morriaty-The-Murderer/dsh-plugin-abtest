@@ -2,11 +2,18 @@ export interface ReportView {
   experimentId: string
   comparison: {
     validPairCount: number
+    validUniqueCaseCount: number
     invalidPairCount: number
+    caseStability: {
+      evaluableCaseCount: number
+      unstableCaseCount: number
+      status: 'not_evaluable' | 'stable' | 'unstable'
+    }
     quality: {
       taskSuccessLift: number
       criticalCaseRegressions: number
       pairedOutcomes?: { wins: number; losses: number; ties: number }
+      blindOutcomes: { candidateWins: number; controlWins: number; ties: number; evaluatedPairs: number }
       blindWinRate?: number | null
     }
     guardrails: {
@@ -43,11 +50,14 @@ ${reasons}
 | Measure | Value |
 | --- | ---: |
 | Valid pairs | ${result.comparison.validPairCount} |
+| Valid unique cases | ${result.comparison.validUniqueCaseCount} |
 | Invalid pairs | ${result.comparison.invalidPairCount} |
+| Case stability | ${result.comparison.caseStability.status} (${result.comparison.caseStability.unstableCaseCount} / ${result.comparison.caseStability.evaluableCaseCount} unstable) |
 | Exposure verified | ${result.exposureSummary.exposed} |
 | Exposure unknown | ${result.exposureSummary.unknown} |
 | Task success lift | ${percentage(result.comparison.quality.taskSuccessLift * 100)} |
 | Paired wins / losses / ties | ${result.comparison.quality.pairedOutcomes === undefined ? 'unavailable' : `${result.comparison.quality.pairedOutcomes.wins} / ${result.comparison.quality.pairedOutcomes.losses} / ${result.comparison.quality.pairedOutcomes.ties}`} |
+| Blind Candidate / Control / ties | ${result.comparison.quality.blindOutcomes.candidateWins} / ${result.comparison.quality.blindOutcomes.controlWins} / ${result.comparison.quality.blindOutcomes.ties} |
 | Blind win rate | ${percentage((result.comparison.quality.blindWinRate ?? null) === null ? null : (result.comparison.quality.blindWinRate as number) * 100)} |
 | Critical case regressions | ${result.comparison.quality.criticalCaseRegressions} |
 | Median token increase | ${percentage(result.comparison.guardrails.medianTokenIncreasePct)} |

@@ -64,6 +64,7 @@ export const experimentManifestSchema = z.strictObject({
   }),
   decision: z.strictObject({
     minimum_valid_pairs: z.number().int().positive(),
+    minimum_unique_cases: z.number().int().positive().default(2),
     hard_gates: z.strictObject({
       boot_success: z.boolean(),
       activation_success: z.boolean(),

@@ -139,6 +139,7 @@ export interface PostHocAnalysis {
 
 export interface PromotionPolicy {
   minimumValidPairs: number
+  minimumUniqueCases: number
   minimumAbsoluteLift: number
   hardGates: {
     bootSuccess: boolean

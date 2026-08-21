@@ -33,6 +33,7 @@ const validManifest = {
   },
   decision: {
     minimum_valid_pairs: 6,
+    minimum_unique_cases: 2,
     hard_gates: {
       boot_success: true,
       activation_success: true,
@@ -55,6 +56,13 @@ const validManifest = {
 describe('实验 manifest', () => {
   it('解析严格的 schema v1', () => {
     expect(parseManifest(validManifest)).toEqual(validManifest)
+  })
+
+  it('旧 schema v1 manifest 缺少 unique-case 门槛时采用保守默认值', () => {
+    const { minimum_unique_cases: _minimumUniqueCases, ...legacyDecision } = validManifest.decision
+    const parsed = parseManifest({ ...validManifest, decision: legacyDecision })
+
+    expect(parsed.decision.minimum_unique_cases).toBe(2)
   })
 
   it('拒绝 suite 中未保留的字段', () => {

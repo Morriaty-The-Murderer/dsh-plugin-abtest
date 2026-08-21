@@ -6,6 +6,7 @@ function pair(
   id: string,
   control: Partial<PairMeasurement['control']>,
   candidate: Partial<PairMeasurement['candidate']>,
+  identity: { caseId: string; repetition: number } = { caseId: id, repetition: 0 },
 ): PairMeasurement {
   const defaults = {
     taskSuccess: true,
@@ -27,6 +28,8 @@ function pair(
   }
   return {
     pairId: id,
+    caseId: identity.caseId,
+    repetition: identity.repetition,
     valid: true,
     criticalCase: false,
     exposureVerified: true,
@@ -71,6 +74,68 @@ describe('paired metrics', () => {
       integrityFailureCount: 1,
       infrastructureFailureCount: 1,
     })
+  })
+
+  it('只按有效 measurement 的不同 case 计算 unique-case 数', () => {
+    const repeated = [
+      pair('case-a-0', {}, {}, { caseId: 'case-a', repetition: 0 }),
+      pair('case-a-1', {}, {}, { caseId: 'case-a', repetition: 1 }),
+    ]
+    const invalid = {
+      ...pair('case-b-0', {}, {}, { caseId: 'case-b', repetition: 0 }),
+      valid: false,
+      invalidReason: 'infrastructure_error' as const,
+    }
+
+    expect(aggregatePairs([...repeated, invalid]).validUniqueCaseCount).toBe(1)
+  })
+
+  it('拒绝缺少 canonical case identity 的旧 measurement', () => {
+    const { caseId: _caseId, ...legacyMeasurement } = pair('legacy', {}, {})
+
+    expect(() => aggregatePairs([legacyMeasurement as PairMeasurement])).toThrow(/measurement identity/i)
+  })
+
+  it('同一 case 的重复 task-success delta 冲突时标记为 unstable', () => {
+    const comparison = aggregatePairs([
+      pair('case-a-0', { taskSuccess: false }, { taskSuccess: true }, { caseId: 'case-a', repetition: 0 }),
+      pair('case-a-1', { taskSuccess: true }, { taskSuccess: false }, { caseId: 'case-a', repetition: 1 }),
+    ])
+
+    expect(comparison.caseStability).toEqual({
+      evaluableCaseCount: 1,
+      unstableCaseCount: 1,
+      status: 'unstable',
+    })
+  })
+
+  it('blind result 排除 tie 后计算 Candidate 胜率，并保留完整 outcome 计数', () => {
+    const comparison = aggregatePairs([
+      { ...pair('candidate-win', {}, {}), blindWinner: 'candidate' },
+      { ...pair('control-win', {}, {}), blindWinner: 'control' },
+      { ...pair('tie', {}, {}), blindWinner: 'tie' },
+      pair('missing', {}, {}),
+    ])
+
+    expect(comparison.quality.blindOutcomes).toEqual({
+      candidateWins: 1,
+      controlWins: 1,
+      ties: 1,
+      evaluatedPairs: 3,
+    })
+    expect(comparison.quality.blindWinRate).toBe(0.5)
+  })
+
+  it('没有 blind evidence 时胜率保持 null，不伪造零值', () => {
+    const comparison = aggregatePairs([pair('missing', {}, {})])
+
+    expect(comparison.quality.blindOutcomes).toEqual({
+      candidateWins: 0,
+      controlWins: 0,
+      ties: 0,
+      evaluatedPairs: 0,
+    })
+    expect(comparison.quality.blindWinRate).toBeNull()
   })
 
   it('统计函数处理偶数中位数、p95 和样本标准差', () => {

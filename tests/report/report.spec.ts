@@ -7,8 +7,15 @@ const result = {
   experimentId: 'experiment-a',
   comparison: {
     validPairCount: 6,
+    validUniqueCaseCount: 3,
     invalidPairCount: 1,
-    quality: { taskSuccessLift: 0.1, criticalCaseRegressions: 0 },
+    caseStability: { evaluableCaseCount: 3, unstableCaseCount: 1, status: 'unstable' as const },
+    quality: {
+      taskSuccessLift: 0.1,
+      criticalCaseRegressions: 0,
+      blindOutcomes: { candidateWins: 2, controlWins: 1, ties: 1, evaluatedPairs: 4 },
+      blindWinRate: 2 / 3,
+    },
     guardrails: { medianTokenIncreasePct: 10, p95LatencyIncreasePct: 12, toolErrorRateIncreasePp: 0 },
   },
   decision: {
@@ -29,6 +36,9 @@ describe('reports', () => {
     expect(markdown).toContain('# Experiment experiment-a')
     expect(markdown).toContain('PROMOTE')
     expect(markdown).toContain('Valid pairs | 6')
+    expect(markdown).toContain('Valid unique cases | 3')
+    expect(markdown).toContain('Case stability | unstable (1 / 3 unstable)')
+    expect(markdown).toContain('Blind Candidate / Control / ties | 2 / 1 / 1')
     expect(markdown).toContain('Exposure verified | 6')
     expect(markdown).toContain('Task success lift | 10.00%')
   })
@@ -38,5 +48,8 @@ describe('reports', () => {
     expect(html).toContain("default-src 'none'")
     expect(html).not.toMatch(/<script/i)
     expect(html).toContain('PROMOTE')
+    expect(html).toContain('Valid unique cases</th><td>3')
+    expect(html).toContain('Case stability</th><td>unstable (1 / 3 unstable)')
+    expect(html).toContain('Blind Candidate / Control / ties</th><td>2 / 1 / 1')
   })
 })

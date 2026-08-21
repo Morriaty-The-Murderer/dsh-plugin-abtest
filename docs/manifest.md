@@ -77,3 +77,7 @@ extensions:
 ```
 
 fingerprint 和制品元数据只记录 allowlist 的规范化哈希，不保存原始环境变量值。子进程的 stdout、stderr 与 session log 会原样作为运行证据保存；插件和测试命令不得主动输出 secret。
+
+## 证据充分性门槛
+
+`decision.minimum_valid_pairs` 限制可进入结论的有效配对数量；`decision.minimum_unique_cases` 进一步限制这些配对必须覆盖多少个不同 case。repetition 只增加同一 case 的重复观测，不会增加 unique-case 数，因此不能靠重复运行单一 case 满足跨用例证据门槛。为保持 schema v1 manifest 可读取，旧清单省略该字段时采用保守默认值 `2`；新清单应显式填写。

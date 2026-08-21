@@ -20,7 +20,7 @@ import type {
 } from '../domain/types.js'
 import { loadCases } from '../evaluate/cases.js'
 import { aggregatePairs, type Comparison, type PairMeasurement, type RunMeasurement } from '../evaluate/metrics.js'
-import { evaluatePairEvidence } from '../evaluate/pipeline.js'
+import { type EvaluatePairInput, evaluatePairEvidence } from '../evaluate/pipeline.js'
 import { detectExposure, validateRequiredExposure } from '../exposure/detectors.js'
 import type { ExposureDetectorConfig } from '../exposure/types.js'
 import { loadManifest } from '../manifest/load.js'
@@ -182,6 +182,7 @@ function variantFromManifest(id: VariantId, manifest: ExperimentManifest): Varia
 function promotionPolicy(manifest: ExperimentManifest): PromotionPolicy {
   return {
     minimumValidPairs: manifest.decision.minimum_valid_pairs,
+    minimumUniqueCases: manifest.decision.minimum_unique_cases,
     minimumAbsoluteLift: manifest.decision.primary.minimum_absolute_lift,
     hardGates: {
       bootSuccess: manifest.decision.hard_gates.boot_success,
@@ -224,7 +225,8 @@ export async function initProject(root: string): Promise<{ manifest: string }> {
       suite: { cases: 'evals/cases.yml', repetitions: 2 },
       execution: { order: 'counterbalanced', concurrency: 1, timeout_ms: 5_000, require_exposure: true },
       decision: {
-        minimum_valid_pairs: 2,
+        minimum_valid_pairs: 4,
+        minimum_unique_cases: 2,
         hard_gates: {
           boot_success: true,
           activation_success: true,
@@ -247,6 +249,12 @@ export async function initProject(root: string): Promise<{ manifest: string }> {
           task: 'Return the expected fixture value.',
           critical: false,
           assertions: [{ id: 'expected', kind: 'required_value', critical: false, config: { value: 'expected' } }],
+        },
+        {
+          id: 'clean-process-exit',
+          task: 'Complete the fixture task without a process failure.',
+          critical: false,
+          assertions: [{ id: 'process', kind: 'process_exit_success', critical: false, config: {} }],
         },
       ],
     }),
@@ -354,6 +362,7 @@ function measurement(
   collected: Partial<Record<VariantId, CollectedRunEvidence>>,
   valid: boolean,
   invalidReason: PairMeasurement['invalidReason'],
+  blindWinner?: PairMeasurement['blindWinner'],
 ): PairMeasurement {
   function arm(run: Run, evidence: CollectedRunEvidence | undefined): RunMeasurement {
     const usage = run.evidence.tokenUsage
@@ -392,6 +401,9 @@ function measurement(
   }
   return {
     pairId: pair.id,
+    caseId: pair.caseId,
+    repetition: pair.repetition,
+    ...(blindWinner === undefined ? {} : { blindWinner }),
     valid,
     ...(invalidReason === undefined ? {} : { invalidReason }),
     criticalCase: caseDef.critical,
@@ -419,9 +431,14 @@ async function mapConcurrentOrdered<T, R>(
   return results
 }
 
+export interface RunExperimentOptions {
+  comparator?: EvaluatePairInput['comparator']
+}
+
 export async function runExperiment(
   manifestPath: string,
   outputRoot: string,
+  options: RunExperimentOptions = {},
 ): Promise<{ comparison: Comparison; pairs: RunPair[] }> {
   const { manifest, cases } = await validateExperiment(manifestPath)
   const root = stateRoot(manifest, outputRoot)
@@ -531,7 +548,7 @@ export async function runExperiment(
         }
       }
     }
-    await evaluatePairEvidence({
+    const evaluated = await evaluatePairEvidence({
       pair,
       caseDef,
       contexts: {
@@ -552,6 +569,7 @@ export async function runExperiment(
           ownedEffectsRemaining: 0,
         },
       },
+      ...(options.comparator === undefined ? {} : { comparator: options.comparator }),
     })
     let invalidReason: PairMeasurement['invalidReason']
     if (!pair.integrity.valid) invalidReason = 'pair_integrity_failure'
@@ -564,7 +582,14 @@ export async function runExperiment(
         validateRequiredExposure(pair.candidate.exposure, manifest.execution.require_exposure) !== undefined)
     )
       invalidReason = 'required_exposure_missing'
-    const pairMeasurement = measurement(pair, caseDef, collected, invalidReason === undefined, invalidReason)
+    const pairMeasurement = measurement(
+      pair,
+      caseDef,
+      collected,
+      invalidReason === undefined,
+      invalidReason,
+      evaluated.blindResult?.winner,
+    )
     await Promise.all([writeState(layout.pairFile, pair), writeState(measurementPath, pairMeasurement)])
     return { pair, measurement: pairMeasurement }
   })

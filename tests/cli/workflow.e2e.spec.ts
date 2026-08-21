@@ -36,9 +36,19 @@ describe('offline CLI workflow', () => {
 
     const resumedRun = await command(['run', '--manifest', manifest, '--output', output, '--json'])
     expect(resumedRun.code, resumedRun.stderr).toBe(0)
-    expect(JSON.parse(resumedRun.stdout)).toMatchObject({ ok: true, pairCount: 2 })
+    expect(JSON.parse(resumedRun.stdout)).toMatchObject({ ok: true, pairCount: 4 })
     const resumedStatus = await command(['status', '--manifest', manifest, '--output', output, '--json'])
-    expect(JSON.parse(resumedStatus.stdout)).toMatchObject({ completed: 2, valid: 2, failed: 0, pending: 0 })
+    expect(JSON.parse(resumedStatus.stdout)).toMatchObject({ completed: 4, valid: 4, failed: 0, pending: 0 })
+
+    const comparison = JSON.parse(await readFile(join(output, 'example-plugin-improvement', 'comparison.json'), 'utf8'))
+    expect(comparison).toMatchObject({
+      validUniqueCaseCount: 2,
+      caseStability: { evaluableCaseCount: 2, unstableCaseCount: 0, status: 'stable' },
+      quality: {
+        blindOutcomes: { candidateWins: 0, controlWins: 0, ties: 0, evaluatedPairs: 0 },
+        blindWinRate: null,
+      },
+    })
 
     const decision = await command(['decision', '--manifest', manifest, '--output', output, '--json'])
     expect(decision.code).toBe(0)
@@ -82,7 +92,7 @@ describe('offline CLI workflow', () => {
     const output = join(root, 'evidence')
     const { manifest } = await initProject(project)
     const document = parse(await readFile(manifest, 'utf8'))
-    document.suite.repetitions = 4
+    document.suite.repetitions = 2
     document.execution.concurrency = 2
     document.decision.minimum_valid_pairs = 4
     await writeFile(manifest, stringify(document))
@@ -101,8 +111,8 @@ describe('offline CLI workflow', () => {
     expect(result.pairs.map((pair) => pair.id)).toEqual([
       'expected-output-0',
       'expected-output-1',
-      'expected-output-2',
-      'expected-output-3',
+      'clean-process-exit-0',
+      'clean-process-exit-1',
     ])
     expect(elapsedMs).toBeLessThan(2_800)
   }, 10_000)
