@@ -5,6 +5,7 @@ export interface DshSessionHeader {
   createdAt?: number
   delegationDepth?: number
   parentId?: string
+  parentSession?: string
   [key: string]: unknown
 }
 
@@ -22,12 +23,12 @@ const knownEventTypes = new Set([
   'step/start',
   'step/end',
   'assistant/chunk',
-  'assistant/final',
-  'usage',
+  'assistant/message',
   'text-chunks',
   'tool/call',
   'tool/result',
   'request/header-delta',
+  'request/header',
   'plugin/installed',
   'plugin/loaded',
   'plugin/activated',

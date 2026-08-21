@@ -6,6 +6,15 @@ const variantSource = z.string().regex(/^(?:npm|github|local|tarball):.+/)
 const jsonValue: z.ZodType<unknown> = z.lazy(() =>
   z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(jsonValue), z.record(z.string(), jsonValue)]),
 )
+const portableWorkspacePath = z
+  .string()
+  .trim()
+  .min(1)
+  .refine(
+    (path) =>
+      !path.startsWith('/') && !/^[A-Za-z]:/.test(path) && !path.includes('\\') && !path.split('/').includes('..'),
+    'Path must be a portable relative workspace path',
+  )
 
 const variantSchema = z.strictObject({
   source: variantSource,
@@ -24,6 +33,13 @@ const exposureDetectorSchema = z.discriminatedUnion('kind', [
     value: jsonValue.optional(),
   }),
   z.strictObject({ id: identifier, kind: z.literal('custom_receipt'), plugin: z.string().trim().min(1).optional() }),
+  z.strictObject({
+    id: identifier,
+    kind: z.literal('workspace_file_change'),
+    path: portableWorkspacePath,
+    change: z.enum(['added', 'modified', 'deleted']),
+    match: z.enum(['exact', 'prefix']).optional(),
+  }),
 ])
 
 export const experimentManifestSchema = z.strictObject({

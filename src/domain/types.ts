@@ -18,6 +18,7 @@ export interface FrozenArtifact {
   dependencyLockHash: string
   dshBundleHash: string
   materializedPath: string
+  usesDshBundle?: boolean
 }
 
 export interface RuntimeFixture {

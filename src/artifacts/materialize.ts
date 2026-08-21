@@ -34,6 +34,16 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+async function promoteToCache(stagingArtifact: string, target: string, expectedHash: string): Promise<void> {
+  try {
+    await rename(stagingArtifact, target)
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code !== 'EEXIST' && code !== 'ENOTEMPTY') throw error
+    if (!(await exists(target)) || (await hashDirectory(target)) !== expectedHash) throw error
+  }
+}
+
 function run(command: ExternalCommand, args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command.bin, [...(command.prefixArgs ?? []), ...args], {
@@ -123,7 +133,7 @@ export async function materializeArtifact(
     const metadata = await prepareSource(source, stagingArtifact, stagingRoot, context)
     const hash = await hashDirectory(stagingArtifact)
     const target = join(context.cacheRoot, hash)
-    if (!(await exists(target))) await rename(stagingArtifact, target)
+    await promoteToCache(stagingArtifact, target, hash)
     return { path: target, hash, sourceType: source.type, ...metadata }
   } finally {
     await rm(stagingRoot, { recursive: true, force: true })

@@ -39,6 +39,7 @@
     "identity:check": "node --import tsx scripts/identity/check.ts",
     "project:rename": "node --import tsx scripts/identity/rename.ts",
     "test:rename": "node --import tsx scripts/identity/test-rename.ts",
+    "case-study:summarize": "node --import tsx scripts/case-study/summarize.ts",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

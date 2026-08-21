@@ -71,6 +71,7 @@ describe('runPair', () => {
     const pair = await runPair({
       outputRoot: join(root, 'output'),
       experimentId: 'experiment-a',
+      targetPlugin: 'fixture-target',
       scheduled: { id: 'case-a-0', caseId: 'case-a', repetition: 0, order: ['control', 'candidate'] },
       fixture,
       timeoutMs: 5_000,

@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -27,15 +27,38 @@ describe('pinned DSH contract', () => {
       sandboxPolicy: 'isolated-workspace',
       environmentAllowlist: [],
     })
+    const artifactRoot = join(root, 'bundle-artifact')
+    await mkdir(artifactRoot)
+    await Promise.all([
+      writeFile(
+        join(artifactRoot, 'package.json'),
+        `${JSON.stringify({
+          name: 'fixture-bundle-target',
+          version: '1.0.0',
+          type: 'module',
+          main: './index.js',
+          dsh: { bundle: { patch: './cordis.patch.yml' } },
+        })}\n`,
+      ),
+      writeFile(
+        join(artifactRoot, 'index.js'),
+        'export const name = "fixture-bundle-target"\nexport function apply() {}\n',
+      ),
+      writeFile(
+        join(artifactRoot, 'cordis.patch.yml'),
+        '- insert:\n    - id: fixture-bundle-target\n      name: fixture-bundle-target\n      config:\n        mode: bundle-default\n',
+      ),
+    ])
     const artifact: FrozenArtifact = {
-      packageName: 'fixture-plugin',
+      packageName: 'fixture-bundle-target',
       packageVersion: '1.0.0',
       sourceType: 'local-directory',
       artifactHash: 'artifact',
       pluginConfigHash: 'config',
       dependencyLockHash: 'lock',
       dshBundleHash: 'bundle',
-      materializedPath: resolve('fixtures/plugins/control-v1'),
+      materializedPath: artifactRoot,
+      usesDshBundle: true,
     }
     const makeFingerprint = (targetArtifactHash: string) =>
       createRuntimeFingerprint({
@@ -63,19 +86,43 @@ describe('pinned DSH contract', () => {
       experimentId: 'contract',
       scheduled: { id: 'contract-0', caseId: 'contract', repetition: 0, order: ['control', 'candidate'] },
       fixture,
+      targetPlugin: 'fixture-bundle-target',
       timeoutMs: 10_000,
       terminationGraceMs: 500,
       environment: {},
+      model: {
+        provider: 'deepseek-official',
+        name: 'deepseek-v4-flash',
+        parameters: { reasoningEffort: 'off', maxTokens: 2_048 },
+      },
       arms: {
-        control: { artifact, fingerprint: makeFingerprint('control'), command },
-        candidate: { artifact, fingerprint: makeFingerprint('candidate'), command },
+        control: {
+          artifact,
+          fingerprint: makeFingerprint('control'),
+          command,
+          pluginConfig: { mode: 'control' },
+        },
+        candidate: {
+          artifact,
+          fingerprint: makeFingerprint('candidate'),
+          command,
+          pluginConfig: { mode: 'candidate' },
+        },
       },
     })
 
     expect(pair.control.evidence.processExitCode).toBe(0)
     expect(pair.candidate.evidence.processExitCode).toBe(0)
     expect(pair.control.evidence.stdoutPath).not.toBe(pair.candidate.evidence.stdoutPath)
-    expect(await readFile(pair.control.evidence.stdoutPath, 'utf8')).toContain('plugin-experiment-target')
+    expect(await readFile(pair.control.evidence.stdoutPath, 'utf8')).toContain(
+      'id: fixture-bundle-target\n  name: fixture-bundle-target\n  config:\n    mode: control',
+    )
+    expect(await readFile(pair.candidate.evidence.stdoutPath, 'utf8')).toContain(
+      'id: fixture-bundle-target\n  name: fixture-bundle-target\n  config:\n    mode: candidate',
+    )
+    expect(await readFile(pair.control.evidence.stdoutPath, 'utf8')).toContain(
+      "id: llm-deepseek\n  name: '@deepseek-ai/dsh-llm-deepseek'\n  config:\n    reasoningEffort: 'off'\n    maxTokens: 2048",
+    )
   }, 20_000)
 
   it.skipIf(process.env.DSH_PLUGIN_EXPERIMENT_LIVE !== '1')(

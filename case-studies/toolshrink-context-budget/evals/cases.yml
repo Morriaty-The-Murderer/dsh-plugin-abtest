@@ -1,0 +1,38 @@
+schema_version: 1
+cases:
+  - id: build-log-summary
+    task: Run `node scripts/emit-build-log.mjs` exactly once. If its final summary is `BUILD_RESULT=BUILD_LOG_OK`, reply exactly `BUILD_LOG_OK` and nothing else.
+    critical: true
+    assertions:
+      - id: process-completed
+        kind: process_exit_success
+        critical: true
+        config: {}
+      - id: expected-summary
+        kind: required_value
+        critical: true
+        config:
+          value: BUILD_LOG_OK
+      - id: original-output-spilled
+        kind: file_exists
+        critical: true
+        config:
+          path: .toolshrink-spill
+  - id: test-log-summary
+    task: Run `node scripts/emit-test-log.mjs` exactly once. If its final summary is `TEST_RESULT=TEST_LOG_OK`, reply exactly `TEST_LOG_OK` and nothing else.
+    critical: true
+    assertions:
+      - id: process-completed
+        kind: process_exit_success
+        critical: true
+        config: {}
+      - id: expected-summary
+        kind: required_value
+        critical: true
+        config:
+          value: TEST_LOG_OK
+      - id: original-output-spilled
+        kind: file_exists
+        critical: true
+        config:
+          path: .toolshrink-spill

@@ -14,14 +14,50 @@ function modulePath(profilePath: string, packageName: string): string {
 }
 
 export interface IsolatedProfileOptions {
+  targetPlugin: string
   pluginConfig?: unknown
-  model?: { provider: string; name: string }
+  model?: { provider: string; name: string; parameters?: Readonly<Record<string, unknown>> }
+}
+
+function modelPatch(model: NonNullable<IsolatedProfileOptions['model']>): unknown[] {
+  const parameters = model.parameters ?? {}
+  const openAiCompatiblePatch =
+    model.provider === 'openai-compatible'
+      ? [
+          {
+            id: 'llm-pi-ai',
+            config: {
+              providers: {
+                'openai-compatible': {
+                  api: 'openai-completions',
+                  apiKeyEnv: parameters.apiKeyEnv,
+                  baseURL: parameters.host,
+                  models: [
+                    {
+                      id: model.name,
+                      ...(parameters.contextWindow === undefined ? {} : { contextWindow: parameters.contextWindow }),
+                      ...(parameters.maxTokens === undefined ? {} : { maxTokens: parameters.maxTokens }),
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ]
+      : []
+  return [
+    ...openAiCompatiblePatch,
+    ...(model.provider === 'deepseek-official' && Object.keys(parameters).length > 0
+      ? [{ id: 'llm-deepseek', config: parameters }]
+      : []),
+    { id: 'agent-default-model', config: { provider: model.provider, model: model.name } },
+  ]
 }
 
 export async function prepareIsolatedProfile(
   layout: ArmLayout,
   artifact: FrozenArtifact,
-  options: IsolatedProfileOptions = {},
+  options: IsolatedProfileOptions,
 ): Promise<void> {
   await mkdir(layout.profile, { recursive: true })
   const manifest = {
@@ -30,7 +66,11 @@ export async function prepareIsolatedProfile(
     dependencies: { [artifact.packageName]: dependencyPath(layout.profile, layout.artifact) },
     dsh: {
       profile: {
-        bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless'],
+        bundles: [
+          '@deepseek-ai/dsh-base',
+          '@deepseek-ai/dsh-headless',
+          ...(artifact.usesDshBundle === true ? [artifact.packageName] : []),
+        ],
       },
     },
   }
@@ -41,18 +81,12 @@ export async function prepareIsolatedProfile(
       join(layout.profile, 'cordis.patch.yml'),
       stringify([
         { id: 'session-persistence-jsonl', config: { root: layout.sessionRoot } },
-        ...(options.model === undefined
-          ? []
-          : [{ id: 'agent-default-model', config: { provider: options.model.provider, model: options.model.name } }]),
-        {
-          insert: [
-            {
-              id: 'plugin-experiment-target',
-              name: artifact.packageName,
-              config: options.pluginConfig ?? {},
+        ...(options.model === undefined ? [] : modelPatch(options.model)),
+        artifact.usesDshBundle === true
+          ? { id: options.targetPlugin, config: options.pluginConfig ?? {} }
+          : {
+              insert: [{ id: options.targetPlugin, name: artifact.packageName, config: options.pluginConfig ?? {} }],
             },
-          ],
-        },
       ]),
     ),
     writeFile(
