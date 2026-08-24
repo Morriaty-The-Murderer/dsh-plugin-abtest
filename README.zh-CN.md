@@ -33,7 +33,24 @@ DSH Plugin A/B Test 会把当前版本（Control）和候选版本（Candidate�
 
 除了这条结论，你还会得到每次运行的 session 证据、断言结果、配对差值，以及 JSON、Markdown、HTML 三种报告。结论不靠模型拍板，而是由 manifest 中的确定性规则计算。
 
-## 快速开始
+## 安装到 DSH
+
+DSH 按 profile 管理插件。本包当前适配精确固定的 `@deepseek-ai/dsh@0.1.0-rc.7` 契约；该版本 CLI 必须显式提供 profile：
+
+```bash
+dsh plugin --profile web add 'github:Morriaty-The-Murderer/dsh-plugin-abtest#<full-commit-sha>'
+dsh --profile web --dump-default-config
+```
+
+请使用已审阅的完整 commit SHA，不要固定到可变分支。Git 安装会在安装阶段构建源码；首次公开 npm 版本将改为预构建 tarball，并提供更短的稳定命令：
+
+```bash
+dsh plugin --profile web add dsh-plugin-abtest@0.1.0
+```
+
+这里提前记录 npm 命令，但只有 `0.1.0` 确实发布且完成 registry 回读后才能使用。添加、删除或更新 bundle 后，需要重启正在运行的 profile。
+
+## 从源码运行
 
 当前 MVP 从源码运行，要求 Node.js `^22.19.0 || >=24.0.0` 和 pnpm `11.19.0`。初始化样例使用离线 scripted provider，不需要模型 API key。
 
@@ -115,10 +132,11 @@ pnpm typecheck
 pnpm test
 pnpm test:integration
 pnpm test:rename
+pnpm test:distribution
 pnpm build
-pnpm pack --dry-run
+pnpm pack --pack-destination <临时目录>
 ```
 
-项目仍处于 MVP 阶段，当前不发布 npm 包。架构、上游契约与安全边界分别见 [架构说明](docs/architecture.md) 和 [上游审计](docs/upstream.md)。
+项目正在准备首次公开发布，但当前仍未发布到 npm。架构、上游契约与安全边界分别见 [架构说明](docs/architecture.md) 和 [上游审计](docs/upstream.md)。
 
 公开名称、npm 包名和 CLI 名称由 `project.identity.json` 统一管理，并有实质 rename 测试防止旧身份残留；详见 [身份文档](docs/identity.md)。稳定协议标识不会随品牌改名。

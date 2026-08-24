@@ -22,7 +22,19 @@ async function createDriftedProject(): Promise<string> {
   await writeFile(join(root, 'project.identity.json'), `${JSON.stringify(identity, undefined, 2)}\n`)
   await writeFile(
     join(root, 'package.json'),
-    `${JSON.stringify({ name: 'old-name', description: 'old', bin: { old: './lib/cli/bin.js' }, scripts: {} }, undefined, 2)}\n`,
+    `${JSON.stringify(
+      {
+        name: 'old-name',
+        description: 'old',
+        bin: { old: './lib/cli/bin.js' },
+        scripts: {},
+        repository: { type: 'git', url: 'git+https://github.com/example/old-name.git' },
+        homepage: 'https://github.com/example/old-name#readme',
+        bugs: { url: 'https://github.com/example/old-name/issues' },
+      },
+      undefined,
+      2,
+    )}\n`,
   )
   await writeFile(
     join(root, 'src', 'identity', 'generated.ts'),
@@ -59,5 +71,18 @@ describe('身份同步', () => {
       "displayName: 'Harness Pair Lab'",
     )
     await expect(synchronizeIdentity(root, 'check')).resolves.toEqual({ changedFiles: [] })
+  })
+
+  it('write 模式随 repoSlug 更新公开源码链接并保留仓库 owner', async () => {
+    const root = await createDriftedProject()
+
+    await synchronizeIdentity(root, 'write')
+
+    const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as Record<string, unknown>
+    expect(packageJson).toMatchObject({
+      repository: { type: 'git', url: 'git+https://github.com/example/harness-pair-lab.git' },
+      homepage: 'https://github.com/example/harness-pair-lab#readme',
+      bugs: { url: 'https://github.com/example/harness-pair-lab/issues' },
+    })
   })
 })

@@ -42,6 +42,25 @@ export function renderGeneratedIdentity(identity: ProjectIdentity): string {
   ].join('\n')
 }
 
+function synchronizeRepositoryMetadata(
+  packageJson: Record<string, unknown>,
+  identity: ProjectIdentity,
+): Record<string, unknown> {
+  const repository = packageJson.repository
+  if (repository === null || typeof repository !== 'object' || Array.isArray(repository)) return {}
+  const repositoryRecord = repository as Record<string, unknown>
+  if (typeof repositoryRecord.url !== 'string') return {}
+  const normalized = repositoryRecord.url.replace(/^git\+/, '').replace(/\.git$/, '')
+  const separator = normalized.lastIndexOf('/')
+  if (!normalized.startsWith('https://') || separator < 'https://'.length) return {}
+  const repositoryUrl = `${normalized.slice(0, separator + 1)}${identity.repoSlug}`
+  return {
+    repository: { ...repositoryRecord, url: `git+${repositoryUrl}.git` },
+    homepage: `${repositoryUrl}#readme`,
+    bugs: { url: `${repositoryUrl}/issues` },
+  }
+}
+
 export function renderPackageIdentity(packageJson: Record<string, unknown>, identity: ProjectIdentity): string {
   const currentBin = packageJson.bin
   const cliTarget =
@@ -50,6 +69,7 @@ export function renderPackageIdentity(packageJson: Record<string, unknown>, iden
       : undefined
   const synchronized = {
     ...packageJson,
+    ...synchronizeRepositoryMetadata(packageJson, identity),
     name: identity.npmName,
     description: identity.description,
     bin: { [identity.cliBin]: cliTarget ?? './lib/cli/bin.js' },
