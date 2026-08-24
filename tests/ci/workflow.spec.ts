@@ -9,6 +9,11 @@ const GITHUB_REF_TYPE = '$' + '{{ github.ref_type }}'
 const DEEPSEEK_SECRET = '$' + '{{ secrets.DEEPSEEK_API_KEY }}'
 const PROTECTED_VARIABLE = '$' + '{{ vars.LIVE_MODEL_CI_PROTECTED }}'
 const RUNNER_TEMP_SUMMARY = '$' + '{{ runner.temp }}/live-model-summary/result.json'
+const RELEASE_VERSION = '$' + '{{ inputs.version }}'
+const RELEASE_CONFIRMATION = '$' + '{{ inputs.confirm_release }}'
+const NPM_TOKEN = '$' + '{{ secrets.NPM_TOKEN }}'
+const RELEASE_TARBALL = '$' + '{{ steps.package.outputs.tarball }}'
+const RELEASE_PROTECTED_VARIABLE = '$' + '{{ vars.NPM_RELEASE_PROTECTED }}'
 
 interface WorkflowStep {
   env?: Record<string, string>
@@ -27,6 +32,7 @@ interface WorkflowDocument {
     {
       needs?: string
       environment?: string
+      permissions?: Record<string, string>
       'timeout-minutes'?: number
       steps: WorkflowStep[]
     }
@@ -149,5 +155,76 @@ describe('GitHub Actions workflow', () => {
     expect(packIndex).toBeGreaterThan(distributionIndex)
     expect(commands).not.toContain('pnpm pack --dry-run')
     expect(commands.join('\n')).not.toMatch(/(?:npm|pnpm) publish|git push|gh release create/)
+  })
+
+  it('npm 发布只能由 master 上精确确认版本的人工事件进入受保护环境', async () => {
+    const workflow = await readWorkflow('.github/workflows/npm-release.yml')
+
+    expect(workflow.on).toEqual({
+      workflow_dispatch: {
+        inputs: {
+          version: {
+            description: '输入与 package.json 完全一致的发布版本',
+            required: true,
+            type: 'string',
+          },
+          confirm_release: {
+            description: '输入 publish-<version> 确认公开发布',
+            required: true,
+            type: 'string',
+          },
+        },
+      },
+    })
+    expect(workflow.permissions).toEqual({ contents: 'read' })
+    expect(workflow.concurrency).toEqual({ group: 'npm-release', 'cancel-in-progress': false })
+
+    const authorization = workflow.jobs.authorize?.steps.find((step) => step.name === '确认发布边界')
+    expect(authorization?.env).toMatchObject({
+      REQUESTED_VERSION: RELEASE_VERSION,
+      RELEASE_CONFIRMATION,
+      DISPATCHED_REF: GITHUB_REF,
+      DISPATCHED_REF_TYPE: GITHUB_REF_TYPE,
+    })
+    expect(authorization?.run).toContain('test "$DISPATCHED_REF_TYPE" = "branch"')
+    expect(authorization?.run).toContain('test "$DISPATCHED_REF" = "refs/heads/master"')
+    expect(authorization?.run).toContain('test "$RELEASE_CONFIRMATION" = "publish-$REQUESTED_VERSION"')
+    expect(workflow.jobs.publish).toMatchObject({
+      needs: 'authorize',
+      environment: 'npm-release',
+      permissions: { contents: 'read', 'id-token': 'write' },
+      'timeout-minutes': 30,
+    })
+    const protection = workflow.jobs.publish?.steps.find((step) => step.name === '确认受保护环境')
+    expect(protection?.env).toEqual({ NPM_RELEASE_PROTECTED: RELEASE_PROTECTED_VARIABLE })
+    expect(protection?.run).toContain('test "$NPM_RELEASE_PROTECTED" = "true"')
+  })
+
+  it('发布 job 固定 action 且只向 npm publish 注入凭证并发布已审计 tarball', async () => {
+    const workflow = await readWorkflow('.github/workflows/npm-release.yml')
+    const steps = workflow.jobs.publish?.steps ?? []
+    const actions = steps.flatMap((step) => (step.uses === undefined ? [] : [step.uses]))
+
+    expect(actions).toEqual([
+      'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803',
+      'pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86',
+      'actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38',
+    ])
+    const secretSteps = steps.filter((step) => JSON.stringify(step).includes('secrets.NPM_TOKEN'))
+    expect(secretSteps).toHaveLength(1)
+    expect(secretSteps[0]).toMatchObject({
+      name: '发布已审计 tarball',
+      env: { NODE_AUTH_TOKEN: NPM_TOKEN },
+    })
+    expect(secretSteps[0]?.run).toContain('test -n "$NODE_AUTH_TOKEN"')
+    expect(secretSteps[0]?.run).toContain(
+      `npm publish "${RELEASE_TARBALL}" --access public --tag latest --provenance --registry=https://registry.npmjs.org/`,
+    )
+
+    const packageStep = steps.find((step) => step.name === '打包并记录制品')
+    expect(packageStep?.env).toBeUndefined()
+    expect(packageStep?.run).toContain('pnpm pack --pack-destination "$RELEASE_DIR"')
+    expect(packageStep?.run).toContain('echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"')
+    expect(packageStep?.run).toContain('shasum -a 256 "$TARBALL"')
   })
 })
