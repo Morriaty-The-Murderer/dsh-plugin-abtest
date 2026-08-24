@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process'
 import { cp, mkdtemp, readFile, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,6 +7,13 @@ import { scanStaleIdentity } from '../../src/identity/stale-scan.js'
 import { runRenameVerification } from '../../src/identity/verification.js'
 
 const sourceRoot = process.cwd()
+if (process.env.DISTRIBUTION_PNPM_STORE === undefined) {
+  const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+  const store = spawnSync(pnpm, ['store', 'path'], { cwd: sourceRoot, encoding: 'utf8' })
+  if (store.error !== undefined) throw store.error
+  if (store.status !== 0) throw new Error(`无法解析 pnpm store：${store.stderr.trim()}`)
+  process.env.DISTRIBUTION_PNPM_STORE = store.stdout.trim()
+}
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'plugin-experiment-rename-e2e-'))
 await cp(sourceRoot, temporaryRoot, {
   recursive: true,

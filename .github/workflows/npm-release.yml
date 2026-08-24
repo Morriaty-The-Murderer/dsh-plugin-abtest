@@ -1,0 +1,100 @@
+name: Publish npm package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 输入与 package.json 完全一致的发布版本
+        required: true
+        type: string
+      confirm_release:
+        description: 输入 publish-<version> 确认公开发布
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 确认发布边界
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          RELEASE_CONFIRMATION: ${{ inputs.confirm_release }}
+          DISPATCHED_REF: ${{ github.ref }}
+          DISPATCHED_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          test -n "$REQUESTED_VERSION"
+          test "$DISPATCHED_REF_TYPE" = "branch"
+          test "$DISPATCHED_REF" = "refs/heads/master"
+          test "$RELEASE_CONFIRMATION" = "publish-$REQUESTED_VERSION"
+
+  publish:
+    needs: authorize
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 确认受保护环境
+        env:
+          NPM_RELEASE_PROTECTED: ${{ vars.NPM_RELEASE_PROTECTED }}
+        run: |
+          set -euo pipefail
+          test "$NPM_RELEASE_PROTECTED" = "true"
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.19.0
+          run_install: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.19.0'
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm identity:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm test:integration
+      - run: pnpm test:rename
+      - run: pnpm test:distribution
+      - name: 校验发布版本
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          test "$PACKAGE_VERSION" = "$REQUESTED_VERSION"
+      - id: package
+        name: 打包并记录制品
+        run: |
+          set -euo pipefail
+          RELEASE_DIR="$RUNNER_TEMP/npm-release"
+          mkdir -p "$RELEASE_DIR"
+          pnpm pack --pack-destination "$RELEASE_DIR"
+          mapfile -t TARBALLS < <(find "$RELEASE_DIR" -maxdepth 1 -type f -name '*.tgz' -print)
+          test "${#TARBALLS[@]}" = "1"
+          TARBALL="${TARBALLS[0]}"
+          SHA256="$(shasum -a 256 "$TARBALL" | awk '{print $1}')"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          shasum -a 256 "$TARBALL"
+      - name: 发布已审计 tarball
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$NODE_AUTH_TOKEN"
+          npm publish "${{ steps.package.outputs.tarball }}" --access public --tag latest --provenance --registry=https://registry.npmjs.org/
