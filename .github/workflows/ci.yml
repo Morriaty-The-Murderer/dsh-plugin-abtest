@@ -28,4 +28,7 @@ jobs:
       - run: pnpm test:integration
       - run: pnpm test:rename
       - run: pnpm build
-      - run: pnpm pack --dry-run
+      - run: pnpm test:distribution
+      - run: |
+          mkdir -p "$RUNNER_TEMP/package-audit"
+          pnpm pack --pack-destination "$RUNNER_TEMP/package-audit"

@@ -3,6 +3,23 @@
   "version": "0.1.0",
   "description": "Paired experiments and promotion gates for DSH plugins.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Morriaty-The-Murderer/dsh-plugin-abtest.git"
+  },
+  "homepage": "https://github.com/Morriaty-The-Murderer/dsh-plugin-abtest#readme",
+  "bugs": {
+    "url": "https://github.com/Morriaty-The-Murderer/dsh-plugin-abtest/issues"
+  },
+  "keywords": [
+    "ab-testing",
+    "agent-evaluation",
+    "deepseek-harness",
+    "dsh-plugin",
+    "llm-evaluation",
+    "plugin-testing",
+    "reproducibility"
+  ],
   "type": "module",
   "packageManager": "pnpm@11.19.0",
   "engines": {
@@ -30,8 +47,14 @@
     "cordis.patch.yml",
     "project.identity.json",
     "README.md",
+    "README.zh-CN.md",
+    "assets/social-preview.jpg",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsdown",
     "format": "biome check --write .",
@@ -39,6 +62,7 @@
     "identity:check": "node --import tsx scripts/identity/check.ts",
     "project:rename": "node --import tsx scripts/identity/rename.ts",
     "test:rename": "node --import tsx scripts/identity/test-rename.ts",
+    "test:distribution": "node --import tsx scripts/distribution/smoke.ts --json",
     "case-study:summarize": "node --import tsx scripts/case-study/summarize.ts",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit",

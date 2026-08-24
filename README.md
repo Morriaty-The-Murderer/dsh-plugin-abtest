@@ -35,7 +35,24 @@ This is a real result from the repository's offline example, with unrelated fiel
 
 Alongside the decision, you get raw session evidence, assertion results, pair-level deltas, and reports in JSON, Markdown, and HTML. The model does not choose the outcome; deterministic rules from the experiment manifest do.
 
-## Quick start
+## Install into DSH
+
+DSH manages plugins per profile. The package targets the pinned `@deepseek-ai/dsh@0.1.0-rc.7` contract, and the profile name is required by that CLI:
+
+```bash
+dsh plugin --profile web add 'github:Morriaty-The-Murderer/dsh-plugin-abtest#<full-commit-sha>'
+dsh --profile web --dump-default-config
+```
+
+Use a reviewed full commit SHA rather than a mutable branch. A Git install builds the package during installation; the first public npm release will provide a prebuilt tarball and the shorter stable command below:
+
+```bash
+dsh plugin --profile web add dsh-plugin-abtest@0.1.0
+```
+
+The npm command is intentionally documented ahead of release but does not work until version `0.1.0` is published and verified in the registry. Restart a running profile after adding, removing, or updating the bundle.
+
+## Run from source
 
 The current MVP runs from source and requires Node.js `^22.19.0 || >=24.0.0` and pnpm `11.19.0`. The starter experiment uses an offline scripted provider, so no model API key is required.
 
@@ -119,10 +136,11 @@ pnpm typecheck
 pnpm test
 pnpm test:integration
 pnpm test:rename
+pnpm test:distribution
 pnpm build
-pnpm pack --dry-run
+pnpm pack --pack-destination <temporary-directory>
 ```
 
-This project is currently an MVP and is not published as an npm package. See the [architecture](docs/architecture.md) and [upstream audit](docs/upstream.md) for implementation and security boundaries.
+The package is being prepared for its first public release but is not yet published to npm. See the [architecture](docs/architecture.md) and [upstream audit](docs/upstream.md) for implementation and security boundaries.
 
 Public names, the npm package name, and the CLI name are managed from `project.identity.json`. A real rename test prevents stale public identity from surviving a rename; see the [identity guide](docs/identity.md). Stable protocol identifiers do not change with the project brand.

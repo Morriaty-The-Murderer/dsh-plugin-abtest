@@ -134,4 +134,20 @@ describe('GitHub Actions workflow', () => {
       'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02',
     ])
   })
+
+  it('默认 CI 在构建后验证可分发制品且不执行远端发布', async () => {
+    const workflow = await readWorkflow('.github/workflows/ci.yml')
+    const commands = workflow.jobs.verify?.steps.flatMap((step) => (step.run === undefined ? [] : [step.run])) ?? []
+    const buildIndex = commands.indexOf('pnpm build')
+    const distributionIndex = commands.indexOf('pnpm test:distribution')
+    const packIndex = commands.findIndex((command) =>
+      command.includes('pnpm pack --pack-destination "$RUNNER_TEMP/package-audit"'),
+    )
+
+    expect(workflow.permissions).toEqual({ contents: 'read' })
+    expect(distributionIndex).toBeGreaterThan(buildIndex)
+    expect(packIndex).toBeGreaterThan(distributionIndex)
+    expect(commands).not.toContain('pnpm pack --dry-run')
+    expect(commands.join('\n')).not.toMatch(/(?:npm|pnpm) publish|git push|gh release create/)
+  })
 })
