@@ -44,13 +44,13 @@ dsh plugin --profile web add 'github:Morriaty-The-Murderer/dsh-plugin-abtest#<fu
 dsh --profile web --dump-default-config
 ```
 
-Use a reviewed full commit SHA rather than a mutable branch. A Git install builds the package during installation; the first public npm release will provide a prebuilt tarball and the shorter stable command below:
+Use a reviewed full commit SHA rather than a mutable branch. A Git install builds the package during installation; the npm package is distributed as a prebuilt tarball and supports the shorter version-pinned command below:
 
 ```bash
 dsh plugin --profile web add dsh-plugin-abtest@0.1.0
 ```
 
-The npm command is intentionally documented ahead of release but does not work until version `0.1.0` is published and verified in the registry. Restart a running profile after adding, removing, or updating the bundle.
+When installing from npm, pin the exact first public release rather than a mutable tag. Restart a running profile after adding, removing, or updating the bundle.
 
 ## Run from source
 
@@ -141,6 +141,6 @@ pnpm build
 pnpm pack --pack-destination <temporary-directory>
 ```
 
-The package is being prepared for its first public release but is not yet published to npm. See the [architecture](docs/architecture.md) and [upstream audit](docs/upstream.md) for implementation and security boundaries.
+See the [architecture](docs/architecture.md) and [upstream audit](docs/upstream.md) for implementation and security boundaries.
 
 Public names, the npm package name, and the CLI name are managed from `project.identity.json`. A real rename test prevents stale public identity from surviving a rename; see the [identity guide](docs/identity.md). Stable protocol identifiers do not change with the project brand.
